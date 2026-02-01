@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Carom Score Tracker</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #121212;
+  --surface: #1e1e1e;
+  --surface2: #2a2a2a;
+  --primary: #bb86fc;
+  --primary-dim: #8858c8;
+  --on-bg: #e0e0e0;
+  --on-surface: #cccccc;
+  --muted: #888888;
+  --border: #333333;
+  --danger: #cf6679;
+  --success: #03dac6;
+}
+
+html, body {
+  height: 100%;
+  font-family: 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--on-bg);
+  font-size: 14px;
+  -webkit-tap-highlight-color: transparent;
+  overflow: hidden;
+}
+
+/* ---- Tab bar ---- */
+.tab-bar {
+  display: flex;
+  background: var(--surface);
+  border-bottom: 2px solid var(--primary);
+}
+.tab-bar button {
+  flex: 1;
+  padding: 12px 0;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+  border-bottom: 3px solid transparent;
+}
+.tab-bar button.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+/* ---- Tab content ---- */
+.tab-content { display: none; height: calc(100vh - 47px); overflow-y: auto; }
+.tab-content.active { display: flex; flex-direction: column; }
+
+/* ---- Game tab ---- */
+.game-top {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  flex-shrink: 0;
+}
+
+/* Left column: fields */
+.fields-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  flex: 1;
+  align-content: start;
+}
+
+.field-group { display: flex; flex-direction: column; }
+.field-group label {
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 2px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+.field-group input, .field-group .ro-value {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--on-bg);
+  padding: 6px 8px;
+  font-size: 14px;
+  width: 100%;
+  text-align: center;
+}
+.field-group input:focus { border-color: var(--primary); outline: none; }
+.field-group .ro-value {
+  background: var(--surface2);
+  color: var(--muted);
+  border-color: transparent;
+}
+
+/* Right column: numpad + add */
+.numpad-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 150px;
+  flex-shrink: 0;
+}
+.numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+.numpad button {
+  min-height: 44px;
+  min-width: 44px;
+  font-size: 18px;
+  font-weight: 600;
+  background: var(--surface2);
+  color: var(--on-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background .1s;
+}
+.numpad button:active { background: var(--primary-dim); }
+
+.add-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.add-row .add-display {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--on-bg);
+  padding: 8px;
+  font-size: 16px;
+  text-align: center;
+  font-weight: 600;
+}
+.add-row button {
+  min-height: 44px;
+  min-width: 44px;
+  font-size: 22px;
+  font-weight: 700;
+  background: var(--primary);
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.add-row button:active { background: var(--primary-dim); }
+
+/* Action buttons */
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  padding: 0 8px 6px;
+  flex-shrink: 0;
+}
+.action-buttons button {
+  flex: 1;
+  padding: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  background: var(--surface);
+  color: var(--on-bg);
+  min-height: 44px;
+}
+.action-buttons .btn-reset { color: var(--danger); border-color: var(--danger); }
+.action-buttons .btn-end { color: var(--success); border-color: var(--success); }
+.action-buttons button:active { opacity: .7; }
+
+/* Result table */
+.result-table-wrap {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 8px 8px;
+}
+.result-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.result-table th, .result-table td {
+  padding: 6px 4px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+}
+.result-table th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+}
+.result-table td:first-child {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* ---- Overall tab ---- */
+.overall-tab { padding: 10px; gap: 12px; }
+
+.overall-input-row {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.overall-input-row input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--on-bg);
+  padding: 10px 12px;
+  font-size: 15px;
+}
+.overall-input-row input:focus { border-color: var(--primary); outline: none; }
+.overall-input-row button {
+  min-width: 64px;
+  min-height: 44px;
+  background: var(--primary);
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.stats-row {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.stats-row .stat-box {
+  flex: 1;
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+}
+.stats-row .stat-box .stat-label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.stats-row .stat-box .stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.projections {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.projection-row {
+  display: flex;
+  justify-content: space-between;
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+.projection-row .proj-label { color: var(--muted); font-size: 13px; }
+.projection-row .proj-value { font-weight: 600; font-size: 14px; }
+
+/* Collapsible moyennes list */
+.collapsible-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+  user-select: none;
+}
+.collapsible-header .arrow { transition: transform .2s; font-size: 12px; color: var(--muted); }
+.collapsible-header.open .arrow { transform: rotate(180deg); }
+.moyennes-list {
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  max-height: 300px;
+  background: var(--surface);
+  border-radius: 0 0 8px 8px;
+  padding: 0 12px 10px;
+}
+.moyennes-list.open { display: flex; }
+.moyennes-list .m-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.moyennes-list .m-item .m-idx { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- Tab bar -->
+<div class="tab-bar">
+  <button class="active" data-tab="game">Game</button>
+  <button data-tab="overall">Overall</button>
+</div>
+
+<!-- Game tab -->
+<div id="tab-game" class="tab-content active">
+  <div class="game-top">
+    <!-- Left: fields -->
+    <div class="fields-col">
+      <div class="field-group">
+        <label>Score</label>
+        <input type="number" id="f-score" inputmode="numeric" value="0">
+      </div>
+      <div class="field-group">
+        <label>Turns</label>
+        <input type="number" id="f-turns" inputmode="numeric" value="0">
+      </div>
+      <div class="field-group">
+        <label>Target</label>
+        <input type="number" id="f-target" inputmode="decimal" step="0.01" value="0.90">
+      </div>
+      <div class="field-group">
+        <label>Step</label>
+        <input type="number" id="f-step" inputmode="decimal" step="0.01" value="0.10">
+      </div>
+      <div class="field-group">
+        <label>Moyenne</label>
+        <div class="ro-value" id="f-moyenne">0.00</div>
+      </div>
+      <div class="field-group">
+        <label>Zeros</label>
+        <div class="ro-value" id="f-zeros">0</div>
+      </div>
+    </div>
+
+    <!-- Right: numpad -->
+    <div class="numpad-col">
+      <div class="numpad" id="numpad"></div>
+      <div class="add-row">
+        <div class="add-display" id="add-display">0</div>
+        <button id="btn-add-score">+</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="action-buttons">
+    <button class="btn-reset" id="btn-reset">Reset</button>
+    <button class="btn-end" id="btn-end">End Game</button>
+  </div>
+
+  <div class="result-table-wrap">
+    <table class="result-table">
+      <thead>
+        <tr id="result-header"></tr>
+      </thead>
+      <tbody id="result-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Overall tab -->
+<div id="tab-overall" class="tab-content overall-tab">
+  <div class="overall-input-row">
+    <input type="number" id="ov-input" inputmode="decimal" step="0.01" placeholder="Enter moyenne...">
+    <button id="btn-add-moyenne">Add</button>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-box">
+      <div class="stat-label">Avg Moyenne</div>
+      <div class="stat-value" id="ov-avg">0.00</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Score Target</div>
+      <div class="stat-value" id="ov-target">0</div>
+    </div>
+  </div>
+
+  <div class="projections" id="ov-projections"></div>
+
+  <div class="collapsible-header" id="moy-header">
+    <span>Previous Moyennes (20)</span>
+    <span class="arrow">&#9660;</span>
+  </div>
+  <div class="moyennes-list" id="moy-list"></div>
+</div>
+
+<script>
+/* ============================================================
+   CaromModel — direct port from Python CaromModel
+   ============================================================ */
+class CaromModel {
+  static START_ENTERING_SCORE = 0;
+  static UPDATE_ENTERING_SCORE = 1;
+  static DEFAULT_TARGET = 0.90;
+  static DEFAULT_TARGET_STEP = 0.10;
+  static STORAGE_KEY = 'carom_moyennes';
+
+  constructor() {
+    this.currentScore = 0;
+    this.playedTurns = 0;
+    this.target = CaromModel.DEFAULT_TARGET;
+    this.targetStep = CaromModel.DEFAULT_TARGET_STEP;
+    this.numZeroScores = 0;
+    this.inputState = CaromModel.START_ENTERING_SCORE;
+    this.addScoreValue = 0;
+    this.moyennesList = this.load();
+  }
+
+  /* --- Persistence --- */
+  load() {
+    try {
+      const raw = localStorage.getItem(CaromModel.STORAGE_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr) && arr.length > 0) {
+          while (arr.length < 20) arr.push(1.00);
+          return arr.slice(0, 20).map(Number);
+        }
+      }
+    } catch (_) { /* fall through */ }
+    // Default placeholder moyennes (user can replace via Overall tab)
+    return Array(20).fill(1.00);
+  }
+
+  save() {
+    localStorage.setItem(CaromModel.STORAGE_KEY, JSON.stringify(this.moyennesList));
+  }
+
+  /* --- Calculations --- */
+  getCurrentMoyenne() {
+    return this.playedTurns > 0 ? this.currentScore / this.playedTurns : 0.0;
+  }
+
+  getAvgMoyenne() {
+    if (!this.moyennesList.length) return 0.0;
+    return this.moyennesList.reduce((a, b) => a + b, 0) / this.moyennesList.length;
+  }
+
+  getScoreTarget() {
+    return Math.floor(25.0 * this.getAvgMoyenne());
+  }
+
+  /* --- Game actions --- */
+  addToScore(points) {
+    if (points === 0) this.numZeroScores++;
+    this.currentScore += points;
+    this.playedTurns++;
+  }
+
+  resetGame() {
+    this.currentScore = 0;
+    this.playedTurns = 0;
+    this.numZeroScores = 0;
+    this.inputState = CaromModel.START_ENTERING_SCORE;
+    this.addScoreValue = 0;
+  }
+
+  endGame() {
+    if (this.playedTurns > 0) {
+      const gm = Math.round(this.getCurrentMoyenne() * 100) / 100;
+      this.moyennesList.shift();
+      this.moyennesList.push(gm);
+      this.save();
+    }
+    this.resetGame();
+  }
+
+  addMoyenneToList(moyenne) {
+    this.moyennesList.shift();
+    this.moyennesList.push(moyenne);
+    this.save();
+  }
+
+  /* --- Numpad input --- */
+  updateInputDigit(digit) {
+    if (this.inputState === CaromModel.START_ENTERING_SCORE) {
+      this.addScoreValue = 0;
+    }
+    this.addScoreValue = this.addScoreValue * 10 + digit;
+    this.inputState = CaromModel.UPDATE_ENTERING_SCORE;
+  }
+
+  undoInputDigit() {
+    this.addScoreValue = Math.floor(this.addScoreValue / 10);
+  }
+
+  resetInput() {
+    this.addScoreValue = 0;
+    this.inputState = CaromModel.START_ENTERING_SCORE;
+  }
+
+  /* --- Score projections --- */
+  scoreNeededByTurn(currentScore, playedTurns, targetScore, targetTurns) {
+    let i = 0;
+    while ((currentScore + i) * 100 < 100 * targetScore * (playedTurns + targetTurns)) {
+      i++;
+    }
+    return i;
+  }
+
+  showNeededForPerc(score, playedTurns, target, numTurns = 10) {
+    const result = [];
+    for (let i = 0; i < numTurns; i++) {
+      const needed = this.scoreNeededByTurn(score, playedTurns, target, i + 1);
+      result.push({
+        target,
+        turns: i + 1,
+        neededScore: needed,
+        neededAvg: needed / (i + 1)
+      });
+    }
+    return result;
+  }
+
+  showNeeded(currentScore, playedTurns, targetScore, targetStep, numTurns = 10) {
+    const result = [];
+    for (let i = 0; i < 3; i++) {
+      result.push(this.showNeededForPerc(currentScore, playedTurns, targetScore + targetStep * i, numTurns));
+    }
+    return result;
+  }
+
+  calcExpectedGames(numGames, targMoyenne = null) {
+    if (targMoyenne === null) targMoyenne = this.getAvgMoyenne();
+    if (this.moyennesList.length < 20) return 0.0;
+    const tail = this.moyennesList.slice(-(20 - numGames));
+    const tailSum = tail.reduce((a, b) => a + b, 0);
+    const result = (20.0 * targMoyenne - tailSum) / numGames;
+    return Math.max(0.0, result);
+  }
+}
+
+
+/* ============================================================
+   UI Controller
+   ============================================================ */
+const NUM_RESULT_COLS = 5;
+const model = new CaromModel();
+
+/* --- DOM refs --- */
+const $ = id => document.getElementById(id);
+
+const fScore   = $('f-score');
+const fTurns   = $('f-turns');
+const fTarget  = $('f-target');
+const fStep    = $('f-step');
+const fMoyenne = $('f-moyenne');
+const fZeros   = $('f-zeros');
+const addDisp  = $('add-display');
+
+/* --- Tab switching --- */
+document.querySelectorAll('.tab-bar button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    $('tab-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'overall') updateOverallTab();
+  });
+});
+
+/* --- Build numpad --- */
+(function buildNumpad() {
+  const pad = $('numpad');
+  const keys = [1,2,3,4,5,6,7,8,9,'x',0,'<'];
+  keys.forEach(k => {
+    const btn = document.createElement('button');
+    btn.textContent = k;
+    if (k === 'x') {
+      btn.addEventListener('click', () => { model.resetInput(); model.numZeroScores = 0; syncView(); });
+    } else if (k === '<') {
+      btn.addEventListener('click', () => { model.undoInputDigit(); addDisp.textContent = model.addScoreValue; });
+    } else {
+      btn.addEventListener('click', () => { model.updateInputDigit(k); addDisp.textContent = model.addScoreValue; });
+    }
+    pad.appendChild(btn);
+  });
+})();
+
+/* --- Build result table header --- */
+(function buildResultHeader() {
+  const tr = $('result-header');
+  const th0 = document.createElement('th'); th0.textContent = 'Target \\ Turns'; tr.appendChild(th0);
+  for (let i = 1; i <= NUM_RESULT_COLS; i++) {
+    const th = document.createElement('th'); th.textContent = i; tr.appendChild(th);
+  }
+})();
+
+/* --- Add score --- */
+$('btn-add-score').addEventListener('click', () => {
+  const val = model.addScoreValue;
+  model.addToScore(val);
+  model.resetInput();
+  syncView();
+});
+
+/* --- Reset / End --- */
+$('btn-reset').addEventListener('click', () => { model.resetGame(); syncView(); });
+$('btn-end').addEventListener('click', () => { model.endGame(); syncView(); updateOverallTab(); });
+
+/* --- Editable field handlers --- */
+fScore.addEventListener('change', () => {
+  model.currentScore = parseInt(fScore.value) || 0;
+  syncView();
+});
+fTurns.addEventListener('change', () => {
+  model.playedTurns = parseInt(fTurns.value) || 0;
+  syncView();
+});
+fTarget.addEventListener('change', () => {
+  model.target = parseFloat(fTarget.value) || CaromModel.DEFAULT_TARGET;
+  syncView();
+});
+fStep.addEventListener('change', () => {
+  model.targetStep = parseFloat(fStep.value) || CaromModel.DEFAULT_TARGET_STEP;
+  syncView();
+});
+
+/* --- Sync all game view from model --- */
+function syncView() {
+  fScore.value = model.currentScore;
+  fTurns.value = model.playedTurns;
+  fTarget.value = model.target;
+  fStep.value = model.targetStep;
+  fMoyenne.textContent = model.getCurrentMoyenne().toFixed(2);
+  fZeros.textContent = model.numZeroScores;
+  addDisp.textContent = model.addScoreValue;
+  updateResultTable();
+}
+
+/* --- Result table --- */
+function updateResultTable() {
+  const tbody = $('result-body');
+  const results = model.showNeeded(model.currentScore, model.playedTurns, model.target, model.targetStep, NUM_RESULT_COLS);
+  tbody.innerHTML = '';
+  results.forEach(row => {
+    const tr = document.createElement('tr');
+    const tdTarget = document.createElement('td');
+    tdTarget.textContent = row[0].target.toFixed(2);
+    tr.appendChild(tdTarget);
+    row.forEach(cell => {
+      const td = document.createElement('td');
+      td.textContent = cell.neededScore;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+/* ============================================================
+   Overall tab
+   ============================================================ */
+$('btn-add-moyenne').addEventListener('click', () => {
+  const val = parseFloat($('ov-input').value);
+  if (isNaN(val)) return;
+  model.addMoyenneToList(val);
+  $('ov-input').value = '';
+  updateOverallTab();
+});
+
+/* Collapsible */
+$('moy-header').addEventListener('click', () => {
+  $('moy-header').classList.toggle('open');
+  $('moy-list').classList.toggle('open');
+});
+
+function updateOverallTab() {
+  const avg = model.getAvgMoyenne();
+  $('ov-avg').textContent = avg.toFixed(2);
+  $('ov-target').textContent = model.getScoreTarget();
+
+  /* Projections */
+  const projWrap = $('ov-projections');
+  projWrap.innerHTML = '';
+  for (let i = 0; i < 3; i++) {
+    const stepped = model.target + i * model.targetStep;
+    const expected = model.calcExpectedGames(1, stepped);
+    const div = document.createElement('div');
+    div.className = 'projection-row';
+    div.innerHTML = `<span class="proj-label">Target ${stepped.toFixed(2)}</span><span class="proj-value">${expected.toFixed(2)}</span>`;
+    projWrap.appendChild(div);
+  }
+
+  /* Moyennes list */
+  const list = $('moy-list');
+  list.innerHTML = '';
+  model.moyennesList.forEach((m, i) => {
+    const div = document.createElement('div');
+    div.className = 'm-item';
+    div.innerHTML = `<span class="m-idx">${i + 1}.</span><span>${m.toFixed(2)}</span>`;
+    list.appendChild(div);
+  });
+}
+
+/* --- Initial render --- */
+syncView();
+updateOverallTab();
+</script>
+</body>
+</html>
