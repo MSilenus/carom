@@ -312,6 +312,24 @@ html, body {
   font-size: 13px;
 }
 .moyennes-list .m-item .m-idx { color: var(--muted); }
+
+.io-buttons {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.io-buttons button {
+  flex: 1;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--on-bg);
+}
+.io-buttons button:active { opacity: .7; }
 </style>
 </head>
 <body>
@@ -403,6 +421,12 @@ html, body {
     <span class="arrow">&#9660;</span>
   </div>
   <div class="moyennes-list" id="moy-list"></div>
+
+  <div class="io-buttons">
+    <button id="btn-export">Export</button>
+    <button id="btn-import">Import</button>
+  </div>
+  <input type="file" id="file-import" accept=".json" style="display:none">
 </div>
 
 <script>
@@ -712,6 +736,39 @@ function updateOverallTab() {
     list.appendChild(div);
   });
 }
+
+/* --- Export / Import --- */
+$('btn-export').addEventListener('click', () => {
+  const json = JSON.stringify(model.moyennesList, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'carom_moyennes.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+$('btn-import').addEventListener('click', () => $('file-import').click());
+$('file-import').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const arr = JSON.parse(reader.result);
+      if (!Array.isArray(arr) || arr.length === 0) throw new Error();
+      const nums = arr.slice(0, 20).map(Number);
+      while (nums.length < 20) nums.push(1.00);
+      model.moyennesList = nums;
+      model.save();
+      updateOverallTab();
+    } catch (_) {
+      alert('Invalid file. Expected a JSON array of numbers.');
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
 
 /* --- Initial render --- */
 syncView();
