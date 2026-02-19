@@ -307,11 +307,22 @@ html, body {
 .moyennes-list .m-item {
   display: flex;
   justify-content: space-between;
-  padding: 4px 0;
+  align-items: center;
+  padding: 6px 4px;
   border-bottom: 1px solid var(--border);
   font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+  margin: 0 -4px;
+  transition: background .1s;
 }
-.moyennes-list .m-item .m-idx { color: var(--muted); }
+.moyennes-list .m-item:last-child { border-bottom: none; }
+.moyennes-list .m-item:hover,
+.moyennes-list .m-item:active { background: rgba(187,134,252,0.08); }
+.moyennes-list .m-item .m-idx { color: var(--muted); min-width: 28px; }
+.moyennes-list .m-item .m-val { font-weight: 600; }
+.moyennes-list .m-item .m-meta { color: var(--muted); font-size: 11px; flex: 1; text-align: right; padding: 0 6px; }
+.moyennes-list .m-item .m-arrow { color: var(--muted); font-size: 12px; }
 
 .io-buttons {
   display: flex;
@@ -330,6 +341,102 @@ html, body {
   color: var(--on-bg);
 }
 .io-buttons button:active { opacity: .7; }
+
+/* ---- Game detail bottom sheet ---- */
+.detail-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.65);
+  z-index: 100;
+}
+.detail-sheet {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-height: 85vh;
+  background: var(--surface);
+  border-radius: 16px 16px 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transform: translateY(100%);
+  transition: transform .28s cubic-bezier(0.4,0,0.2,1);
+}
+.detail-overlay.open .detail-sheet { transform: translateY(0); }
+.detail-drag {
+  width: 36px;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin: 10px auto 0;
+  flex-shrink: 0;
+}
+.detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 12px 16px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.detail-title { font-weight: 700; font-size: 18px; color: var(--primary); }
+.detail-subtitle { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+.detail-close {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--surface2);
+  border: none;
+  color: var(--on-bg);
+  font-size: 20px;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.detail-chart-wrap {
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.detail-chart-wrap .chart-legend {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.detail-chart-wrap .chart-legend span { display: flex; align-items: center; gap: 4px; }
+.detail-no-data {
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  font-style: italic;
+}
+.detail-table-wrap { flex: 1; overflow-y: auto; }
+.detail-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.detail-table th {
+  padding: 7px 8px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  font-weight: 600;
+}
+.detail-table td { padding: 6px 8px; text-align: center; border-bottom: 1px solid var(--border); }
+.detail-table tr:last-child td { border-bottom: none; }
+.td-idx { color: var(--muted); }
+.td-zero { color: var(--danger); font-weight: 600; }
+.td-moy { color: var(--primary); }
 </style>
 </head>
 <body>
@@ -429,6 +536,41 @@ html, body {
   <input type="file" id="file-import" accept=".json" style="display:none">
 </div>
 
+<!-- Game detail bottom sheet -->
+<div class="detail-overlay" id="detail-overlay">
+  <div class="detail-sheet">
+    <div class="detail-drag"></div>
+    <div class="detail-header">
+      <div>
+        <div class="detail-title" id="detail-title"></div>
+        <div class="detail-subtitle" id="detail-subtitle"></div>
+      </div>
+      <button class="detail-close" id="detail-close">&#xd7;</button>
+    </div>
+    <div class="detail-chart-wrap" id="detail-chart-wrap">
+      <div id="detail-chart"></div>
+      <div class="chart-legend">
+        <span><svg width="20" height="4"><line x1="0" y1="2" x2="20" y2="2" stroke="#bb86fc" stroke-width="2"/></svg> Moyenne</span>
+        <span><svg width="8" height="8"><circle cx="4" cy="4" r="3" fill="#cf6679"/></svg> Zero turn</span>
+        <span><svg width="20" height="4"><line x1="0" y1="2" x2="20" y2="2" stroke="#bb86fc" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.5"/></svg> Final avg</span>
+      </div>
+    </div>
+    <div class="detail-table-wrap">
+      <table class="detail-table" id="detail-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Pts</th>
+            <th>Total</th>
+            <th>Moyenne</th>
+          </tr>
+        </thead>
+        <tbody id="detail-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ============================================================
    CaromModel — direct port from Python CaromModel
@@ -439,6 +581,7 @@ class CaromModel {
   static DEFAULT_TARGET = 0.90;
   static DEFAULT_TARGET_STEP = 0.10;
   static STORAGE_KEY = 'carom_moyennes';
+  static DETAILS_KEY = 'carom_game_details';
 
   constructor() {
     this.currentScore = 0;
@@ -449,6 +592,8 @@ class CaromModel {
     this.inputState = CaromModel.START_ENTERING_SCORE;
     this.addScoreValue = 0;
     this.moyennesList = this.load();
+    this.gameDetailsList = this.loadDetails();
+    this.currentTurns = [];
   }
 
   /* --- Persistence --- */
@@ -467,8 +612,26 @@ class CaromModel {
     return Array(20).fill(1.00);
   }
 
+  loadDetails() {
+    try {
+      const raw = localStorage.getItem(CaromModel.DETAILS_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr) && arr.length > 0) {
+          while (arr.length < 20) arr.unshift(null);
+          return arr.slice(-20);
+        }
+      }
+    } catch (_) { /* fall through */ }
+    return Array(20).fill(null);
+  }
+
   save() {
     localStorage.setItem(CaromModel.STORAGE_KEY, JSON.stringify(this.moyennesList));
+  }
+
+  saveDetails() {
+    localStorage.setItem(CaromModel.DETAILS_KEY, JSON.stringify(this.gameDetailsList));
   }
 
   /* --- Calculations --- */
@@ -490,6 +653,12 @@ class CaromModel {
     if (points === 0) this.numZeroScores++;
     this.currentScore += points;
     this.playedTurns++;
+    // Record turn for detail tracking
+    this.currentTurns.push({
+      score: points,
+      total: this.currentScore,
+      moyenne: Math.round(this.getCurrentMoyenne() * 1000) / 1000
+    });
   }
 
   resetGame() {
@@ -498,6 +667,7 @@ class CaromModel {
     this.numZeroScores = 0;
     this.inputState = CaromModel.START_ENTERING_SCORE;
     this.addScoreValue = 0;
+    this.currentTurns = [];
   }
 
   endGame() {
@@ -506,6 +676,19 @@ class CaromModel {
       this.moyennesList.shift();
       this.moyennesList.push(gm);
       this.save();
+
+      // Save turn-by-turn details
+      const details = {
+        moyenne: gm,
+        date: new Date().toISOString(),
+        totalScore: this.currentScore,
+        totalTurns: this.playedTurns,
+        zeros: this.numZeroScores,
+        turns: [...this.currentTurns]
+      };
+      this.gameDetailsList.shift();
+      this.gameDetailsList.push(details);
+      this.saveDetails();
     }
     this.resetGame();
   }
@@ -514,6 +697,10 @@ class CaromModel {
     this.moyennesList.shift();
     this.moyennesList.push(moyenne);
     this.save();
+    // No turn data for manually added moyennes
+    this.gameDetailsList.shift();
+    this.gameDetailsList.push(null);
+    this.saveDetails();
   }
 
   /* --- Numpad input --- */
@@ -709,6 +896,21 @@ $('moy-header').addEventListener('click', () => {
   $('moy-list').classList.toggle('open');
 });
 
+function formatGameDate(isoString) {
+  const date = new Date(isoString);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  const gameDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (gameDay.getTime() === today.getTime()) return `Today ${time}`;
+  if (gameDay.getTime() === yesterday.getTime()) return `Yesterday ${time}`;
+  const opts = { month: 'short', day: 'numeric' };
+  if (date.getFullYear() !== now.getFullYear()) opts.year = 'numeric';
+  return `${date.toLocaleDateString([], opts)} ${time}`;
+}
+
 function updateOverallTab() {
   const avg = model.getAvgMoyenne();
   $('ov-avg').textContent = avg.toFixed(2);
@@ -726,15 +928,169 @@ function updateOverallTab() {
     projWrap.appendChild(div);
   }
 
-  /* Moyennes list */
+  /* Moyennes list — clickable items */
   const list = $('moy-list');
   list.innerHTML = '';
   model.moyennesList.forEach((m, i) => {
+    const details = model.gameDetailsList[i];
     const div = document.createElement('div');
     div.className = 'm-item';
-    div.innerHTML = `<span class="m-idx">${i + 1}.</span><span>${m.toFixed(2)}</span>`;
+    div.setAttribute('role', 'button');
+    div.setAttribute('tabindex', '0');
+
+    let metaText = '';
+    if (details) {
+      metaText = formatGameDate(details.date);
+    }
+
+    div.innerHTML = `
+      <span class="m-idx">${i + 1}.</span>
+      <span class="m-val">${m.toFixed(2)}</span>
+      <span class="m-meta">${metaText}</span>
+      <span class="m-arrow">&#8250;</span>
+    `;
+    div.addEventListener('click', () => showGameDetail(i));
+    div.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') showGameDetail(i); });
     list.appendChild(div);
   });
+}
+
+/* ============================================================
+   Game detail bottom sheet
+   ============================================================ */
+
+function openDetailModal() {
+  const overlay = $('detail-overlay');
+  overlay.style.display = 'block';
+  // Double rAF ensures the CSS transition fires after display:block
+  requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add('open')));
+}
+
+function closeDetailModal() {
+  const overlay = $('detail-overlay');
+  overlay.classList.remove('open');
+  setTimeout(() => { overlay.style.display = 'none'; }, 300);
+}
+
+$('detail-close').addEventListener('click', closeDetailModal);
+$('detail-overlay').addEventListener('click', e => {
+  if (e.target === $('detail-overlay')) closeDetailModal();
+});
+
+function drawMoyenneChart(turns, container) {
+  if (!turns || turns.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const W = 320, H = 130;
+  const mg = { top: 14, right: 14, bottom: 22, left: 38 };
+  const plotW = W - mg.left - mg.right;
+  const plotH = H - mg.top - mg.bottom;
+
+  const moyennes = turns.map(t => t.moyenne);
+  const minMoy = Math.min(...moyennes);
+  const maxMoy = Math.max(...moyennes);
+  const spread = maxMoy - minMoy;
+  // Ensure visible range even when all values identical
+  const yPad = spread < 0.01 ? 0.3 : spread * 0.25;
+  const yMin = Math.max(0, minMoy - yPad);
+  const yMax = maxMoy + yPad;
+
+  const xOf = i => mg.left + (turns.length > 1 ? (i / (turns.length - 1)) * plotW : plotW / 2);
+  const yOf = v => mg.top + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
+
+  const finalMoy = moyennes[moyennes.length - 1];
+  const finalY = yOf(finalMoy);
+
+  // Y-axis grid: 4 levels
+  const yTicks = [yMin, yMin + (yMax - yMin) / 3, yMin + 2 * (yMax - yMin) / 3, yMax];
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">`;
+
+  // Grid lines + Y labels
+  yTicks.forEach(v => {
+    const y = yOf(v);
+    svg += `<line x1="${mg.left}" y1="${y}" x2="${W - mg.right}" y2="${y}" stroke="#2e2e2e" stroke-width="1"/>`;
+    svg += `<text x="${mg.left - 5}" y="${y + 4}" text-anchor="end" font-size="9" fill="#666">${v.toFixed(2)}</text>`;
+  });
+
+  // Final moyenne reference dashed line
+  svg += `<line x1="${mg.left}" y1="${finalY}" x2="${W - mg.right}" y2="${finalY}" stroke="#bb86fc" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.45"/>`;
+
+  // Shaded area under the line
+  const ptsList = turns.map((t, i) => `${xOf(i)},${yOf(t.moyenne)}`).join(' ');
+  const areaPoints = `${mg.left},${mg.top + plotH} ${ptsList} ${xOf(turns.length - 1)},${mg.top + plotH}`;
+  svg += `<polygon points="${areaPoints}" fill="#bb86fc" opacity="0.07"/>`;
+
+  // Main polyline
+  svg += `<polyline points="${ptsList}" fill="none" stroke="#bb86fc" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+
+  // Dots (skip individual dots for long games to avoid clutter)
+  const showDots = turns.length <= 25;
+  turns.forEach((t, i) => {
+    const cx = xOf(i);
+    const cy = yOf(t.moyenne);
+    const isZero = t.score === 0;
+    if (showDots) {
+      svg += `<circle cx="${cx}" cy="${cy}" r="${isZero ? 3.5 : 2.5}" fill="${isZero ? '#cf6679' : '#bb86fc'}" stroke="${isZero ? '#cf6679' : '#1e1e1e'}" stroke-width="1"/>`;
+    } else if (isZero) {
+      // Always show zero-score markers even on long games
+      svg += `<circle cx="${cx}" cy="${cy}" r="3" fill="#cf6679"/>`;
+    }
+  });
+
+  // X-axis labels: show first, last, and a few in between
+  const xLabelCount = Math.min(5, turns.length);
+  const step = turns.length > 1 ? Math.round((turns.length - 1) / (xLabelCount - 1)) : 0;
+  const xLabels = new Set([0, turns.length - 1]);
+  for (let k = 1; k < xLabelCount - 1; k++) xLabels.add(Math.round(k * step));
+  xLabels.forEach(i => {
+    svg += `<text x="${xOf(i)}" y="${H - mg.bottom + 13}" text-anchor="middle" font-size="9" fill="#666">${i + 1}</text>`;
+  });
+
+  // Axis lines
+  svg += `<line x1="${mg.left}" y1="${mg.top}" x2="${mg.left}" y2="${mg.top + plotH}" stroke="#444" stroke-width="1"/>`;
+  svg += `<line x1="${mg.left}" y1="${mg.top + plotH}" x2="${W - mg.right}" y2="${mg.top + plotH}" stroke="#444" stroke-width="1"/>`;
+
+  svg += '</svg>';
+  container.innerHTML = svg;
+}
+
+function showGameDetail(idx) {
+  const moy = model.moyennesList[idx];
+  const details = model.gameDetailsList[idx];
+
+  // Title: game number + moyenne
+  $('detail-title').textContent = `Game ${idx + 1} · ${moy.toFixed(2)} moy.`;
+
+  if (details) {
+    const dateStr = formatGameDate(details.date);
+    const zerosTxt = details.zeros > 0 ? ` · ${details.zeros} zero${details.zeros > 1 ? 's' : ''}` : '';
+    $('detail-subtitle').textContent = `${dateStr} · ${details.totalScore} pts · ${details.totalTurns} turns${zerosTxt}`;
+
+    // Chart
+    $('detail-chart-wrap').style.display = '';
+    drawMoyenneChart(details.turns, $('detail-chart'));
+
+    // Turn table
+    const tbody = $('detail-tbody');
+    tbody.innerHTML = details.turns.map((t, i) => {
+      const isZero = t.score === 0;
+      return `<tr>
+        <td class="td-idx">${i + 1}</td>
+        <td class="${isZero ? 'td-zero' : ''}">${t.score}</td>
+        <td>${t.total}</td>
+        <td class="td-moy">${t.moyenne.toFixed(2)}</td>
+      </tr>`;
+    }).join('');
+  } else {
+    $('detail-subtitle').textContent = 'Manually added · no turn data';
+    $('detail-chart-wrap').style.display = 'none';
+    $('detail-tbody').innerHTML = `<tr><td colspan="4" class="detail-no-data" style="padding:24px;text-align:center;color:var(--muted);font-style:italic">Turn-by-turn data is only available for games played with the numpad.</td></tr>`;
+  }
+
+  openDetailModal();
 }
 
 /* --- Export / Import --- */
@@ -761,6 +1117,9 @@ $('file-import').addEventListener('change', (e) => {
       while (nums.length < 20) nums.push(1.00);
       model.moyennesList = nums;
       model.save();
+      // Imported moyennes have no turn detail data
+      model.gameDetailsList = Array(20).fill(null);
+      model.saveDetails();
       updateOverallTab();
     } catch (_) {
       alert('Invalid file. Expected a JSON array of numbers.');
