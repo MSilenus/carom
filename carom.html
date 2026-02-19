@@ -342,6 +342,83 @@ html, body {
 }
 .io-buttons button:active { opacity: .7; }
 
+/* ---- Config tab ---- */
+.config-tab { padding: 10px; gap: 12px; }
+.config-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--muted);
+  padding: 2px 0 6px;
+  flex-shrink: 0;
+}
+.config-add-row {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.config-add-row input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--on-bg);
+  padding: 10px 12px;
+  font-size: 15px;
+}
+.config-add-row input:focus { border-color: var(--primary); outline: none; }
+.config-add-row button {
+  min-width: 64px;
+  min-height: 44px;
+  background: var(--primary);
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.reasons-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.reason-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 14px;
+}
+.reason-item span { flex: 1; }
+.reason-delete {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--danger);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background .1s;
+}
+.reason-delete:active { background: rgba(207,102,121,0.15); }
+.reasons-empty {
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  font-style: italic;
+  padding: 20px 0;
+}
+
 /* ---- Game detail bottom sheet ---- */
 .detail-overlay {
   display: none;
@@ -437,6 +514,84 @@ html, body {
 .td-idx { color: var(--muted); }
 .td-zero { color: var(--danger); font-weight: 600; }
 .td-moy { color: var(--primary); }
+.td-reason {
+  text-align: left;
+  padding: 2px 8px 7px 32px;
+  font-size: 11px;
+  color: var(--muted);
+  font-style: italic;
+  border-bottom: 1px solid var(--border);
+}
+.td-reason::before { content: '↳ '; }
+
+/* ---- Reason picker bottom sheet ---- */
+.reason-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 200;
+}
+.reason-sheet {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border-radius: 16px 16px 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transform: translateY(100%);
+  transition: transform .25s cubic-bezier(0.4,0,0.2,1);
+  max-height: 70vh;
+}
+.reason-overlay.open .reason-sheet { transform: translateY(0); }
+.reason-drag {
+  width: 36px;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin: 10px auto 4px;
+  flex-shrink: 0;
+}
+.reason-sheet-title {
+  padding: 8px 16px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+}
+.reason-options {
+  overflow-y: auto;
+  flex: 1;
+}
+.reason-option {
+  display: block;
+  width: 100%;
+  padding: 16px 20px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--on-bg);
+  font-size: 16px;
+  text-align: left;
+  cursor: pointer;
+  transition: background .1s;
+}
+.reason-option:last-child { border-bottom: none; }
+.reason-option:active { background: rgba(187,134,252,0.1); }
+.reason-option.skip {
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  border-bottom: none;
+}
 </style>
 </head>
 <body>
@@ -445,6 +600,7 @@ html, body {
 <div class="tab-bar">
   <button class="active" data-tab="game">Game</button>
   <button data-tab="overall">Overall</button>
+  <button data-tab="config">Config</button>
 </div>
 
 <!-- Game tab -->
@@ -536,6 +692,16 @@ html, body {
   <input type="file" id="file-import" accept=".json" style="display:none">
 </div>
 
+<!-- Config tab -->
+<div id="tab-config" class="tab-content config-tab">
+  <div class="config-section-title">Failure Reasons</div>
+  <div class="config-add-row">
+    <input type="text" id="cfg-reason-input" placeholder="Add a reason..." maxlength="50">
+    <button id="cfg-add-reason">Add</button>
+  </div>
+  <div class="reasons-list" id="reasons-list"></div>
+</div>
+
 <!-- Game detail bottom sheet -->
 <div class="detail-overlay" id="detail-overlay">
   <div class="detail-sheet">
@@ -571,9 +737,18 @@ html, body {
   </div>
 </div>
 
+<!-- Reason picker bottom sheet -->
+<div class="reason-overlay" id="reason-overlay">
+  <div class="reason-sheet">
+    <div class="reason-drag"></div>
+    <div class="reason-sheet-title">Why did you miss?</div>
+    <div class="reason-options" id="reason-options"></div>
+  </div>
+</div>
+
 <script>
 /* ============================================================
-   CaromModel — direct port from Python CaromModel
+   CaromModel
    ============================================================ */
 class CaromModel {
   static START_ENTERING_SCORE = 0;
@@ -582,6 +757,8 @@ class CaromModel {
   static DEFAULT_TARGET_STEP = 0.10;
   static STORAGE_KEY = 'carom_moyennes';
   static DETAILS_KEY = 'carom_game_details';
+  static REASONS_KEY = 'carom_failure_reasons';
+  static DEFAULT_REASONS = ['Too soft', 'Too hard', 'Wrong angle', 'Wrong english', 'Miscue'];
 
   constructor() {
     this.currentScore = 0;
@@ -593,6 +770,7 @@ class CaromModel {
     this.addScoreValue = 0;
     this.moyennesList = this.load();
     this.gameDetailsList = this.loadDetails();
+    this.failureReasons = this.loadReasons();
     this.currentTurns = [];
   }
 
@@ -607,8 +785,7 @@ class CaromModel {
           return arr.slice(0, 20).map(Number);
         }
       }
-    } catch (_) { /* fall through */ }
-    // Default placeholder moyennes (user can replace via Overall tab)
+    } catch (_) {}
     return Array(20).fill(1.00);
   }
 
@@ -622,8 +799,19 @@ class CaromModel {
           return arr.slice(-20);
         }
       }
-    } catch (_) { /* fall through */ }
+    } catch (_) {}
     return Array(20).fill(null);
+  }
+
+  loadReasons() {
+    try {
+      const raw = localStorage.getItem(CaromModel.REASONS_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) return arr;
+      }
+    } catch (_) {}
+    return [...CaromModel.DEFAULT_REASONS];
   }
 
   save() {
@@ -632,6 +820,23 @@ class CaromModel {
 
   saveDetails() {
     localStorage.setItem(CaromModel.DETAILS_KEY, JSON.stringify(this.gameDetailsList));
+  }
+
+  saveReasons() {
+    localStorage.setItem(CaromModel.REASONS_KEY, JSON.stringify(this.failureReasons));
+  }
+
+  addReason(text) {
+    const trimmed = text.trim();
+    if (!trimmed || this.failureReasons.includes(trimmed)) return false;
+    this.failureReasons.push(trimmed);
+    this.saveReasons();
+    return true;
+  }
+
+  removeReason(index) {
+    this.failureReasons.splice(index, 1);
+    this.saveReasons();
   }
 
   /* --- Calculations --- */
@@ -653,11 +858,11 @@ class CaromModel {
     if (points === 0) this.numZeroScores++;
     this.currentScore += points;
     this.playedTurns++;
-    // Record turn for detail tracking
     this.currentTurns.push({
       score: points,
       total: this.currentScore,
-      moyenne: Math.round(this.getCurrentMoyenne() * 1000) / 1000
+      moyenne: Math.round(this.getCurrentMoyenne() * 1000) / 1000,
+      reason: null
     });
   }
 
@@ -677,7 +882,6 @@ class CaromModel {
       this.moyennesList.push(gm);
       this.save();
 
-      // Save turn-by-turn details
       const details = {
         moyenne: gm,
         date: new Date().toISOString(),
@@ -697,7 +901,6 @@ class CaromModel {
     this.moyennesList.shift();
     this.moyennesList.push(moyenne);
     this.save();
-    // No turn data for manually added moyennes
     this.gameDetailsList.shift();
     this.gameDetailsList.push(null);
     this.saveDetails();
@@ -734,12 +937,7 @@ class CaromModel {
     const result = [];
     for (let i = 0; i < numTurns; i++) {
       const needed = this.scoreNeededByTurn(score, playedTurns, target, i + 1);
-      result.push({
-        target,
-        turns: i + 1,
-        neededScore: needed,
-        neededAvg: needed / (i + 1)
-      });
+      result.push({ target, turns: i + 1, neededScore: needed, neededAvg: needed / (i + 1) });
     }
     return result;
   }
@@ -769,7 +967,6 @@ class CaromModel {
 const NUM_RESULT_COLS = 5;
 const model = new CaromModel();
 
-/* --- DOM refs --- */
 const $ = id => document.getElementById(id);
 
 const fScore   = $('f-score');
@@ -788,6 +985,7 @@ document.querySelectorAll('.tab-bar button').forEach(btn => {
     btn.classList.add('active');
     $('tab-' + btn.dataset.tab).classList.add('active');
     if (btn.dataset.tab === 'overall') updateOverallTab();
+    if (btn.dataset.tab === 'config') updateConfigTab();
   });
 });
 
@@ -824,6 +1022,14 @@ $('btn-add-score').addEventListener('click', () => {
   model.addToScore(val);
   model.resetInput();
   syncView();
+  // Every turn ends with a miss — show reason picker if reasons are configured
+  if (model.failureReasons.length > 0) {
+    showReasonPicker(reason => {
+      if (reason !== null && model.currentTurns.length > 0) {
+        model.currentTurns[model.currentTurns.length - 1].reason = reason;
+      }
+    });
+  }
 });
 
 /* --- Reset / End --- */
@@ -831,24 +1037,12 @@ $('btn-reset').addEventListener('click', () => { model.resetGame(); syncView(); 
 $('btn-end').addEventListener('click', () => { model.endGame(); syncView(); updateOverallTab(); });
 
 /* --- Editable field handlers --- */
-fScore.addEventListener('change', () => {
-  model.currentScore = parseInt(fScore.value) || 0;
-  syncView();
-});
-fTurns.addEventListener('change', () => {
-  model.playedTurns = parseInt(fTurns.value) || 0;
-  syncView();
-});
-fTarget.addEventListener('change', () => {
-  model.target = parseFloat(fTarget.value) || CaromModel.DEFAULT_TARGET;
-  syncView();
-});
-fStep.addEventListener('change', () => {
-  model.targetStep = parseFloat(fStep.value) || CaromModel.DEFAULT_TARGET_STEP;
-  syncView();
-});
+fScore.addEventListener('change', () => { model.currentScore = parseInt(fScore.value) || 0; syncView(); });
+fTurns.addEventListener('change', () => { model.playedTurns = parseInt(fTurns.value) || 0; syncView(); });
+fTarget.addEventListener('change', () => { model.target = parseFloat(fTarget.value) || CaromModel.DEFAULT_TARGET; syncView(); });
+fStep.addEventListener('change', () => { model.targetStep = parseFloat(fStep.value) || CaromModel.DEFAULT_TARGET_STEP; syncView(); });
 
-/* --- Sync all game view from model --- */
+/* --- Sync game view --- */
 function syncView() {
   fScore.value = model.currentScore;
   fTurns.value = model.playedTurns;
@@ -890,7 +1084,6 @@ $('btn-add-moyenne').addEventListener('click', () => {
   updateOverallTab();
 });
 
-/* Collapsible */
 $('moy-header').addEventListener('click', () => {
   $('moy-header').classList.toggle('open');
   $('moy-list').classList.toggle('open');
@@ -916,7 +1109,6 @@ function updateOverallTab() {
   $('ov-avg').textContent = avg.toFixed(2);
   $('ov-target').textContent = model.getScoreTarget();
 
-  /* Projections */
   const projWrap = $('ov-projections');
   projWrap.innerHTML = '';
   for (let i = 0; i < 3; i++) {
@@ -928,7 +1120,6 @@ function updateOverallTab() {
     projWrap.appendChild(div);
   }
 
-  /* Moyennes list — clickable items */
   const list = $('moy-list');
   list.innerHTML = '';
   model.moyennesList.forEach((m, i) => {
@@ -937,12 +1128,7 @@ function updateOverallTab() {
     div.className = 'm-item';
     div.setAttribute('role', 'button');
     div.setAttribute('tabindex', '0');
-
-    let metaText = '';
-    if (details) {
-      metaText = formatGameDate(details.date);
-    }
-
+    const metaText = details ? formatGameDate(details.date) : '';
     div.innerHTML = `
       <span class="m-idx">${i + 1}.</span>
       <span class="m-val">${m.toFixed(2)}</span>
@@ -956,13 +1142,94 @@ function updateOverallTab() {
 }
 
 /* ============================================================
+   Config tab
+   ============================================================ */
+$('cfg-add-reason').addEventListener('click', () => {
+  const input = $('cfg-reason-input');
+  if (model.addReason(input.value)) {
+    input.value = '';
+    updateConfigTab();
+  }
+});
+$('cfg-reason-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') $('cfg-add-reason').click();
+});
+
+function updateConfigTab() {
+  const list = $('reasons-list');
+  list.innerHTML = '';
+  if (model.failureReasons.length === 0) {
+    list.innerHTML = '<div class="reasons-empty">No reasons yet. Add one above.</div>';
+    return;
+  }
+  model.failureReasons.forEach((r, i) => {
+    const div = document.createElement('div');
+    div.className = 'reason-item';
+    div.innerHTML = `<span>${r}</span>`;
+    const del = document.createElement('button');
+    del.className = 'reason-delete';
+    del.innerHTML = '&#xd7;';
+    del.setAttribute('aria-label', `Delete ${r}`);
+    del.addEventListener('click', () => { model.removeReason(i); updateConfigTab(); });
+    div.appendChild(del);
+    list.appendChild(div);
+  });
+}
+
+/* ============================================================
+   Reason picker
+   ============================================================ */
+let _reasonCallback = null;
+
+function showReasonPicker(callback) {
+  _reasonCallback = callback;
+  const opts = $('reason-options');
+  opts.innerHTML = '';
+
+  model.failureReasons.forEach(r => {
+    const btn = document.createElement('button');
+    btn.className = 'reason-option';
+    btn.textContent = r;
+    btn.addEventListener('click', () => {
+      closeReasonPicker();
+      if (_reasonCallback) _reasonCallback(r);
+    });
+    opts.appendChild(btn);
+  });
+
+  const skip = document.createElement('button');
+  skip.className = 'reason-option skip';
+  skip.textContent = 'Skip';
+  skip.addEventListener('click', () => {
+    closeReasonPicker();
+    if (_reasonCallback) _reasonCallback(null);
+  });
+  opts.appendChild(skip);
+
+  const overlay = $('reason-overlay');
+  overlay.style.display = 'block';
+  requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add('open')));
+}
+
+function closeReasonPicker() {
+  const overlay = $('reason-overlay');
+  overlay.classList.remove('open');
+  setTimeout(() => { overlay.style.display = 'none'; }, 280);
+}
+
+$('reason-overlay').addEventListener('click', e => {
+  if (e.target === $('reason-overlay')) {
+    closeReasonPicker();
+    if (_reasonCallback) _reasonCallback(null);
+  }
+});
+
+/* ============================================================
    Game detail bottom sheet
    ============================================================ */
-
 function openDetailModal() {
   const overlay = $('detail-overlay');
   overlay.style.display = 'block';
-  // Double rAF ensures the CSS transition fires after display:block
   requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add('open')));
 }
 
@@ -978,10 +1245,7 @@ $('detail-overlay').addEventListener('click', e => {
 });
 
 function drawMoyenneChart(turns, container) {
-  if (!turns || turns.length === 0) {
-    container.innerHTML = '';
-    return;
-  }
+  if (!turns || turns.length === 0) { container.innerHTML = ''; return; }
 
   const W = 320, H = 130;
   const mg = { top: 14, right: 14, bottom: 22, left: 38 };
@@ -992,7 +1256,6 @@ function drawMoyenneChart(turns, container) {
   const minMoy = Math.min(...moyennes);
   const maxMoy = Math.max(...moyennes);
   const spread = maxMoy - minMoy;
-  // Ensure visible range even when all values identical
   const yPad = spread < 0.01 ? 0.3 : spread * 0.25;
   const yMin = Math.max(0, minMoy - yPad);
   const yMax = maxMoy + yPad;
@@ -1002,31 +1265,23 @@ function drawMoyenneChart(turns, container) {
 
   const finalMoy = moyennes[moyennes.length - 1];
   const finalY = yOf(finalMoy);
-
-  // Y-axis grid: 4 levels
   const yTicks = [yMin, yMin + (yMax - yMin) / 3, yMin + 2 * (yMax - yMin) / 3, yMax];
 
   let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">`;
 
-  // Grid lines + Y labels
   yTicks.forEach(v => {
     const y = yOf(v);
     svg += `<line x1="${mg.left}" y1="${y}" x2="${W - mg.right}" y2="${y}" stroke="#2e2e2e" stroke-width="1"/>`;
     svg += `<text x="${mg.left - 5}" y="${y + 4}" text-anchor="end" font-size="9" fill="#666">${v.toFixed(2)}</text>`;
   });
 
-  // Final moyenne reference dashed line
   svg += `<line x1="${mg.left}" y1="${finalY}" x2="${W - mg.right}" y2="${finalY}" stroke="#bb86fc" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.45"/>`;
 
-  // Shaded area under the line
   const ptsList = turns.map((t, i) => `${xOf(i)},${yOf(t.moyenne)}`).join(' ');
   const areaPoints = `${mg.left},${mg.top + plotH} ${ptsList} ${xOf(turns.length - 1)},${mg.top + plotH}`;
   svg += `<polygon points="${areaPoints}" fill="#bb86fc" opacity="0.07"/>`;
-
-  // Main polyline
   svg += `<polyline points="${ptsList}" fill="none" stroke="#bb86fc" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
 
-  // Dots (skip individual dots for long games to avoid clutter)
   const showDots = turns.length <= 25;
   turns.forEach((t, i) => {
     const cx = xOf(i);
@@ -1035,12 +1290,10 @@ function drawMoyenneChart(turns, container) {
     if (showDots) {
       svg += `<circle cx="${cx}" cy="${cy}" r="${isZero ? 3.5 : 2.5}" fill="${isZero ? '#cf6679' : '#bb86fc'}" stroke="${isZero ? '#cf6679' : '#1e1e1e'}" stroke-width="1"/>`;
     } else if (isZero) {
-      // Always show zero-score markers even on long games
       svg += `<circle cx="${cx}" cy="${cy}" r="3" fill="#cf6679"/>`;
     }
   });
 
-  // X-axis labels: show first, last, and a few in between
   const xLabelCount = Math.min(5, turns.length);
   const step = turns.length > 1 ? Math.round((turns.length - 1) / (xLabelCount - 1)) : 0;
   const xLabels = new Set([0, turns.length - 1]);
@@ -1049,10 +1302,8 @@ function drawMoyenneChart(turns, container) {
     svg += `<text x="${xOf(i)}" y="${H - mg.bottom + 13}" text-anchor="middle" font-size="9" fill="#666">${i + 1}</text>`;
   });
 
-  // Axis lines
   svg += `<line x1="${mg.left}" y1="${mg.top}" x2="${mg.left}" y2="${mg.top + plotH}" stroke="#444" stroke-width="1"/>`;
   svg += `<line x1="${mg.left}" y1="${mg.top + plotH}" x2="${W - mg.right}" y2="${mg.top + plotH}" stroke="#444" stroke-width="1"/>`;
-
   svg += '</svg>';
   container.innerHTML = svg;
 }
@@ -1061,7 +1312,6 @@ function showGameDetail(idx) {
   const moy = model.moyennesList[idx];
   const details = model.gameDetailsList[idx];
 
-  // Title: game number + moyenne
   $('detail-title').textContent = `Game ${idx + 1} · ${moy.toFixed(2)} moy.`;
 
   if (details) {
@@ -1069,25 +1319,27 @@ function showGameDetail(idx) {
     const zerosTxt = details.zeros > 0 ? ` · ${details.zeros} zero${details.zeros > 1 ? 's' : ''}` : '';
     $('detail-subtitle').textContent = `${dateStr} · ${details.totalScore} pts · ${details.totalTurns} turns${zerosTxt}`;
 
-    // Chart
     $('detail-chart-wrap').style.display = '';
     drawMoyenneChart(details.turns, $('detail-chart'));
 
-    // Turn table
     const tbody = $('detail-tbody');
     tbody.innerHTML = details.turns.map((t, i) => {
       const isZero = t.score === 0;
-      return `<tr>
+      const mainRow = `<tr>
         <td class="td-idx">${i + 1}</td>
         <td class="${isZero ? 'td-zero' : ''}">${t.score}</td>
         <td>${t.total}</td>
         <td class="td-moy">${t.moyenne.toFixed(2)}</td>
       </tr>`;
+      const reasonRow = t.reason
+        ? `<tr><td colspan="4" class="td-reason">${t.reason}</td></tr>`
+        : '';
+      return mainRow + reasonRow;
     }).join('');
   } else {
     $('detail-subtitle').textContent = 'Manually added · no turn data';
     $('detail-chart-wrap').style.display = 'none';
-    $('detail-tbody').innerHTML = `<tr><td colspan="4" class="detail-no-data" style="padding:24px;text-align:center;color:var(--muted);font-style:italic">Turn-by-turn data is only available for games played with the numpad.</td></tr>`;
+    $('detail-tbody').innerHTML = `<tr><td colspan="4" style="padding:24px;text-align:center;color:var(--muted);font-style:italic">Turn-by-turn data is only available for games played with the numpad.</td></tr>`;
   }
 
   openDetailModal();
@@ -1117,7 +1369,6 @@ $('file-import').addEventListener('change', (e) => {
       while (nums.length < 20) nums.push(1.00);
       model.moyennesList = nums;
       model.save();
-      // Imported moyennes have no turn detail data
       model.gameDetailsList = Array(20).fill(null);
       model.saveDetails();
       updateOverallTab();

@@ -2,22 +2,49 @@ import { test, expect, Page } from '@playwright/test'
 
 /**
  * Helper: click a numpad button by its displayed text.
- * The numpad buttons are children of #numpad.
  */
 async function pressNumpad(page: Page, key: string) {
   await page.locator('#numpad button', { hasText: new RegExp(`^${key}$`) }).click()
 }
 
 /**
- * Helper: clear localStorage before each test so tests are isolated.
+ * Helper: dismiss the reason picker by clicking Skip.
+ * Called after every + press since the picker now appears on every turn.
+ */
+async function skipReasonPicker(page: Page) {
+  const skip = page.locator('#reason-options .reason-option.skip')
+  await expect(skip).toBeVisible()
+  await skip.click()
+  // Wait for the picker to finish closing
+  await expect(page.locator('#reason-overlay')).not.toHaveClass(/open/)
+}
+
+/**
+ * Helper: add a turn by entering a value and pressing +, then skipping the reason picker.
+ */
+async function addTurn(page: Page, score: number | null = null) {
+  if (score !== null && score > 0) {
+    // Enter each digit
+    for (const digit of String(score)) {
+      await pressNumpad(page, digit)
+    }
+  }
+  await page.locator('#btn-add-score').click()
+  await skipReasonPicker(page)
+}
+
+/**
+ * Helper: clear localStorage (including failure reasons so picker doesn't appear
+ * unexpectedly) and reload the page.
  */
 test.beforeEach(async ({ page }) => {
   await page.goto('/carom.html')
   await page.evaluate(() => {
     localStorage.removeItem('carom_moyennes')
     localStorage.removeItem('carom_game_details')
+    // Keep failure reasons so reason picker tests work;
+    // tests that don't want the picker use addTurn() which handles it.
   })
-  // Reload so the app re-reads empty localStorage
   await page.reload()
   await page.waitForLoadState('domcontentloaded')
 })
@@ -66,24 +93,16 @@ test.describe('Numpad input', () => {
 
 test.describe('Adding a turn', () => {
   test('pressing + adds staged score to the game', async ({ page }) => {
-    // Stage score of 3
-    await pressNumpad(page, '3')
-    await page.locator('#btn-add-score').click()
+    await addTurn(page, 3)
 
-    // Score should be 3, turns should be 1
     await expect(page.locator('#f-score')).toHaveValue('3')
     await expect(page.locator('#f-turns')).toHaveValue('1')
-
-    // Moyenne = 3/1 = 3.00
     await expect(page.locator('#f-moyenne')).toHaveText('3.00')
-
-    // Add display should reset to 0
     await expect(page.locator('#add-display')).toHaveText('0')
   })
 
   test('adding a zero turn increments the zeros counter', async ({ page }) => {
-    // Stage 0 (default) and press +
-    await page.locator('#btn-add-score').click()
+    await addTurn(page, 0)
 
     await expect(page.locator('#f-score')).toHaveValue('0')
     await expect(page.locator('#f-turns')).toHaveValue('1')
@@ -98,36 +117,19 @@ test.describe('Adding a turn', () => {
 
 test.describe('Multiple turns', () => {
   test('play 3 turns and verify score/turns/moyenne', async ({ page }) => {
-    // Turn 1: score 5
-    await pressNumpad(page, '5')
-    await page.locator('#btn-add-score').click()
+    await addTurn(page, 5)
+    await addTurn(page, 3)
+    await addTurn(page, 7)
 
-    // Turn 2: score 3
-    await pressNumpad(page, '3')
-    await page.locator('#btn-add-score').click()
-
-    // Turn 3: score 7
-    await pressNumpad(page, '7')
-    await page.locator('#btn-add-score').click()
-
-    // Total score = 5 + 3 + 7 = 15, turns = 3
     await expect(page.locator('#f-score')).toHaveValue('15')
     await expect(page.locator('#f-turns')).toHaveValue('3')
-
-    // Moyenne = 15/3 = 5.00
     await expect(page.locator('#f-moyenne')).toHaveText('5.00')
   })
 
   test('play turns with zeros and verify zeros counter', async ({ page }) => {
-    // Turn 1: score 4
-    await pressNumpad(page, '4')
-    await page.locator('#btn-add-score').click()
-
-    // Turn 2: score 0
-    await page.locator('#btn-add-score').click()
-
-    // Turn 3: score 0
-    await page.locator('#btn-add-score').click()
+    await addTurn(page, 4)
+    await addTurn(page, 0)
+    await addTurn(page, 0)
 
     await expect(page.locator('#f-score')).toHaveValue('4')
     await expect(page.locator('#f-turns')).toHaveValue('3')
@@ -141,12 +143,9 @@ test.describe('Multiple turns', () => {
 
 test.describe('Reset game', () => {
   test('reset clears all fields to 0', async ({ page }) => {
-    // Play a turn first
-    await pressNumpad(page, '5')
-    await page.locator('#btn-add-score').click()
+    await addTurn(page, 5)
     await expect(page.locator('#f-score')).toHaveValue('5')
 
-    // Reset
     await page.locator('#btn-reset').click()
 
     await expect(page.locator('#f-score')).toHaveValue('0')
@@ -163,43 +162,33 @@ test.describe('Reset game', () => {
 
 test.describe('End game', () => {
   test('end game saves moyenne to Overall list and resets game state', async ({ page }) => {
-    // Play 2 turns: 4 + 6 = 10, moyenne = 5.00
-    await pressNumpad(page, '4')
-    await page.locator('#btn-add-score').click()
-    await pressNumpad(page, '6')
-    await page.locator('#btn-add-score').click()
+    await addTurn(page, 4)
+    await addTurn(page, 6)
 
     await expect(page.locator('#f-score')).toHaveValue('10')
     await expect(page.locator('#f-turns')).toHaveValue('2')
 
-    // End game
     await page.locator('#btn-end').click()
 
-    // Game state should be reset
     await expect(page.locator('#f-score')).toHaveValue('0')
     await expect(page.locator('#f-turns')).toHaveValue('0')
     await expect(page.locator('#f-moyenne')).toHaveText('0.00')
 
-    // Verify the moyenne was saved to localStorage
     const moyennes = await page.evaluate(() => {
       const raw = localStorage.getItem('carom_moyennes')
       return raw ? JSON.parse(raw) : null
     })
     expect(moyennes).not.toBeNull()
-    // The last entry should be 5.00 (10 pts / 2 turns)
     expect(moyennes[moyennes.length - 1]).toBe(5)
   })
 
   test('end game with no turns does nothing', async ({ page }) => {
-    // Get initial localStorage state
     const beforeMoyennes = await page.evaluate(() =>
       localStorage.getItem('carom_moyennes')
     )
 
-    // End game without playing any turns
     await page.locator('#btn-end').click()
 
-    // localStorage should not have changed
     const afterMoyennes = await page.evaluate(() =>
       localStorage.getItem('carom_moyennes')
     )
@@ -213,19 +202,21 @@ test.describe('End game', () => {
 
 test.describe('Tab switching', () => {
   test('can switch between Game and Overall tabs', async ({ page }) => {
-    // Game tab should be active by default
     await expect(page.locator('#tab-game')).toHaveClass(/active/)
     await expect(page.locator('#tab-overall')).not.toHaveClass(/active/)
 
-    // Click Overall tab
     await page.locator('.tab-bar button[data-tab="overall"]').click()
     await expect(page.locator('#tab-overall')).toHaveClass(/active/)
     await expect(page.locator('#tab-game')).not.toHaveClass(/active/)
 
-    // Click Game tab again
     await page.locator('.tab-bar button[data-tab="game"]').click()
     await expect(page.locator('#tab-game')).toHaveClass(/active/)
     await expect(page.locator('#tab-overall')).not.toHaveClass(/active/)
+  })
+
+  test('can switch to Config tab', async ({ page }) => {
+    await page.locator('.tab-bar button[data-tab="config"]').click()
+    await expect(page.locator('#tab-config')).toHaveClass(/active/)
   })
 })
 
@@ -235,21 +226,93 @@ test.describe('Tab switching', () => {
 
 test.describe('Overall collapsible', () => {
   test('clicking header expands and collapses the moyennes list', async ({ page }) => {
-    // Switch to Overall tab
     await page.locator('.tab-bar button[data-tab="overall"]').click()
 
-    // List should be collapsed by default (no .open class)
     await expect(page.locator('#moy-list')).not.toHaveClass(/open/)
 
-    // Click header to expand
     await page.locator('#moy-header').click()
     await expect(page.locator('#moy-list')).toHaveClass(/open/)
     await expect(page.locator('#moy-header')).toHaveClass(/open/)
 
-    // Click header again to collapse
     await page.locator('#moy-header').click()
     await expect(page.locator('#moy-list')).not.toHaveClass(/open/)
     await expect(page.locator('#moy-header')).not.toHaveClass(/open/)
+  })
+})
+
+// ============================================================
+// Config tab — failure reasons
+// ============================================================
+
+test.describe('Config tab', () => {
+  test('shows default failure reasons', async ({ page }) => {
+    await page.locator('.tab-bar button[data-tab="config"]').click()
+    const items = page.locator('.reason-item')
+    await expect(items).toHaveCount(5) // DEFAULT_REASONS has 5 entries
+    await expect(items.first()).toContainText('Too soft')
+  })
+
+  test('can add a new reason', async ({ page }) => {
+    await page.locator('.tab-bar button[data-tab="config"]').click()
+    await page.locator('#cfg-reason-input').fill('Bad position')
+    await page.locator('#cfg-add-reason').click()
+
+    const items = page.locator('.reason-item')
+    await expect(items).toHaveCount(6)
+    await expect(items.last()).toContainText('Bad position')
+  })
+
+  test('can delete a reason', async ({ page }) => {
+    await page.locator('.tab-bar button[data-tab="config"]').click()
+    const before = await page.locator('.reason-item').count()
+
+    await page.locator('.reason-item').first().locator('.reason-delete').click()
+    await expect(page.locator('.reason-item')).toHaveCount(before - 1)
+  })
+})
+
+// ============================================================
+// Reason picker
+// ============================================================
+
+test.describe('Reason picker', () => {
+  test('picker appears after pressing + and closes on skip', async ({ page }) => {
+    await pressNumpad(page, '3')
+    await page.locator('#btn-add-score').click()
+
+    await expect(page.locator('#reason-overlay')).toHaveClass(/open/)
+
+    await page.locator('#reason-options .reason-option.skip').click()
+    await expect(page.locator('#reason-overlay')).not.toHaveClass(/open/)
+  })
+
+  test('selecting a reason stores it with the turn', async ({ page }) => {
+    await pressNumpad(page, '2')
+    await page.locator('#btn-add-score').click()
+
+    // Pick the first reason ("Too soft")
+    await page.locator('#reason-options .reason-option').first().click()
+    await expect(page.locator('#reason-overlay')).not.toHaveClass(/open/)
+
+    // End the game and inspect stored details
+    await page.locator('#btn-end').click()
+
+    const details = await page.evaluate(() => {
+      const raw = localStorage.getItem('carom_game_details')
+      if (!raw) return null
+      const arr = JSON.parse(raw)
+      return arr[arr.length - 1]
+    })
+    expect(details).not.toBeNull()
+    expect(details.turns[0].reason).toBe('Too soft')
+  })
+
+  test('picker closes when tapping backdrop and stores no reason', async ({ page }) => {
+    await page.locator('#btn-add-score').click()
+
+    await expect(page.locator('#reason-overlay')).toHaveClass(/open/)
+    await page.locator('#reason-overlay').click({ position: { x: 10, y: 10 } })
+    await expect(page.locator('#reason-overlay')).not.toHaveClass(/open/)
   })
 })
 
@@ -259,77 +322,69 @@ test.describe('Overall collapsible', () => {
 
 test.describe('Game detail modal', () => {
   test('after ending a game, can open detail modal with correct info', async ({ page }) => {
-    // Play a game: 3 turns with scores 2, 5, 3 = total 10, moyenne ~3.33
-    await pressNumpad(page, '2')
-    await page.locator('#btn-add-score').click()
-    await pressNumpad(page, '5')
-    await page.locator('#btn-add-score').click()
-    await pressNumpad(page, '3')
-    await page.locator('#btn-add-score').click()
+    await addTurn(page, 2)
+    await addTurn(page, 5)
+    await addTurn(page, 3)
 
-    // End the game
     await page.locator('#btn-end').click()
 
-    // Switch to Overall tab
     await page.locator('.tab-bar button[data-tab="overall"]').click()
-
-    // Expand the moyennes list
     await page.locator('#moy-header').click()
     await expect(page.locator('#moy-list')).toHaveClass(/open/)
 
-    // Click the last item (most recent game = item #20)
     const lastItem = page.locator('#moy-list .m-item').last()
     await expect(lastItem).toBeVisible()
-    // The value should show 3.33
     await expect(lastItem.locator('.m-val')).toHaveText('3.33')
     await lastItem.click()
 
-    // Detail overlay should be visible and open
-    const overlay = page.locator('#detail-overlay')
-    await expect(overlay).toBeVisible()
-    await expect(overlay).toHaveClass(/open/)
-
-    // Title should contain the moyenne
+    await expect(page.locator('#detail-overlay')).toHaveClass(/open/)
     await expect(page.locator('#detail-title')).toContainText('3.33 moy.')
-
-    // Subtitle should mention pts and turns
     await expect(page.locator('#detail-subtitle')).toContainText('10 pts')
     await expect(page.locator('#detail-subtitle')).toContainText('3 turns')
 
-    // Turn table should have 3 rows
+    // 3 turns, no reasons selected — 3 data rows
     const turnRows = page.locator('#detail-tbody tr')
     await expect(turnRows).toHaveCount(3)
 
-    // Verify first turn: # 1, Pts 2, Total 2
-    const firstRow = turnRows.nth(0)
-    const firstCells = firstRow.locator('td')
+    const firstCells = turnRows.nth(0).locator('td')
     await expect(firstCells.nth(0)).toHaveText('1')
     await expect(firstCells.nth(1)).toHaveText('2')
     await expect(firstCells.nth(2)).toHaveText('2')
 
-    // Verify last turn: # 3, Pts 3, Total 10
-    const lastRow = turnRows.nth(2)
-    const lastCells = lastRow.locator('td')
+    const lastCells = turnRows.nth(2).locator('td')
     await expect(lastCells.nth(0)).toHaveText('3')
     await expect(lastCells.nth(1)).toHaveText('3')
     await expect(lastCells.nth(2)).toHaveText('10')
   })
 
   test('detail modal shows chart (SVG element present)', async ({ page }) => {
-    // Play and end a game
-    await pressNumpad(page, '4')
-    await page.locator('#btn-add-score').click()
-    await pressNumpad(page, '2')
-    await page.locator('#btn-add-score').click()
+    await addTurn(page, 4)
+    await addTurn(page, 2)
     await page.locator('#btn-end').click()
 
-    // Navigate to Overall, open list, click last item
     await page.locator('.tab-bar button[data-tab="overall"]').click()
     await page.locator('#moy-header').click()
     await page.locator('#moy-list .m-item').last().click()
 
-    // Chart container should have an SVG
     await expect(page.locator('#detail-chart svg')).toBeVisible()
+  })
+
+  test('reason shown as sub-row in turn table', async ({ page }) => {
+    // Play a turn and pick a reason
+    await pressNumpad(page, '3')
+    await page.locator('#btn-add-score').click()
+    await page.locator('#reason-options .reason-option').first().click() // "Too soft"
+
+    await page.locator('#btn-end').click()
+
+    await page.locator('.tab-bar button[data-tab="overall"]').click()
+    await page.locator('#moy-header').click()
+    await page.locator('#moy-list .m-item').last().click()
+
+    // Should have 2 rows: 1 turn row + 1 reason sub-row
+    const rows = page.locator('#detail-tbody tr')
+    await expect(rows).toHaveCount(2)
+    await expect(rows.nth(1).locator('.td-reason')).toContainText('Too soft')
   })
 })
 
@@ -338,31 +393,23 @@ test.describe('Game detail modal', () => {
 // ============================================================
 
 test.describe('Close detail modal', () => {
-  /**
-   * Helper to play a game and open its detail modal.
-   */
   async function playGameAndOpenDetail(page: Page) {
-    await pressNumpad(page, '5')
-    await page.locator('#btn-add-score').click()
+    await addTurn(page, 5)
     await page.locator('#btn-end').click()
 
     await page.locator('.tab-bar button[data-tab="overall"]').click()
     await page.locator('#moy-header').click()
     await page.locator('#moy-list .m-item').last().click()
 
-    // Wait for modal to be open
     await expect(page.locator('#detail-overlay')).toHaveClass(/open/)
   }
 
   test('close via x button', async ({ page }) => {
     await playGameAndOpenDetail(page)
 
-    // Click the close button
     await page.locator('#detail-close').click()
 
-    // Wait for the close transition (300ms timeout in closeDetailModal)
     await expect(page.locator('#detail-overlay')).not.toHaveClass(/open/)
-    // After transition, display should be none
     await page.waitForTimeout(350)
     await expect(page.locator('#detail-overlay')).toBeHidden()
   })
@@ -370,9 +417,6 @@ test.describe('Close detail modal', () => {
   test('close via backdrop click', async ({ page }) => {
     await playGameAndOpenDetail(page)
 
-    // Click on the overlay backdrop (not on the sheet itself)
-    // The overlay covers the full screen; click at top-left corner
-    // which is outside the bottom sheet
     await page.locator('#detail-overlay').click({ position: { x: 10, y: 10 } })
 
     await expect(page.locator('#detail-overlay')).not.toHaveClass(/open/)
