@@ -579,9 +579,10 @@ html, body {
   flex: 1;
 }
 .reason-option {
-  display: block;
+  display: flex;
+  align-items: center;
   width: 100%;
-  padding: 16px 20px;
+  padding: 14px 20px;
   background: none;
   border: none;
   border-bottom: 1px solid var(--border);
@@ -590,17 +591,59 @@ html, body {
   text-align: left;
   cursor: pointer;
   transition: background .1s;
+  gap: 12px;
 }
-.reason-option:last-child { border-bottom: none; }
 .reason-option:active { background: rgba(187,134,252,0.1); }
-.reason-option.skip {
+.reason-option.selected { background: rgba(187,134,252,0.12); }
+.reason-check {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 2px solid var(--border);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .1s, border-color .1s;
+  font-size: 14px;
+  color: transparent;
+}
+.reason-option.selected .reason-check {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #000;
+}
+.reason-sheet-footer {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.reason-confirm {
+  flex: 1;
+  padding: 12px;
+  background: var(--primary);
+  border: none;
+  border-radius: 8px;
+  color: #000;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity .1s;
+}
+.reason-confirm:active { opacity: .8; }
+.reason-skip {
+  padding: 12px 18px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
   color: var(--muted);
   font-size: 14px;
-  text-align: center;
-  padding: 14px 20px;
-  border-top: 1px solid var(--border);
-  border-bottom: none;
+  cursor: pointer;
+  transition: background .1s;
 }
+.reason-skip:active { background: rgba(255,255,255,0.05); }
 </style>
 </head>
 <body>
@@ -760,6 +803,10 @@ html, body {
     <div class="reason-drag"></div>
     <div class="reason-sheet-title">Why did you miss?</div>
     <div class="reason-options" id="reason-options"></div>
+    <div class="reason-sheet-footer">
+      <button class="reason-confirm" id="reason-confirm">Done</button>
+      <button class="reason-skip" id="reason-skip">Skip</button>
+    </div>
   </div>
 </div>
 
@@ -813,6 +860,16 @@ class CaromModel {
         const arr = JSON.parse(raw);
         if (Array.isArray(arr) && arr.length > 0) {
           while (arr.length < 20) arr.unshift(null);
+          // Migrate old single-string reason → reasons array
+          arr.forEach(g => {
+            if (!g || !g.turns) return;
+            g.turns.forEach(t => {
+              if (!('reasons' in t)) {
+                t.reasons = t.reason ? [t.reason] : [];
+                delete t.reason;
+              }
+            });
+          });
           return arr.slice(-20);
         }
       }
@@ -879,7 +936,7 @@ class CaromModel {
       score: points,
       total: this.currentScore,
       moyenne: Math.round(this.getCurrentMoyenne() * 1000) / 1000,
-      reason: null
+      reasons: []
     });
   }
 
@@ -1041,9 +1098,9 @@ $('btn-add-score').addEventListener('click', () => {
   syncView();
   // Every turn ends with a miss — show reason picker if reasons are configured
   if (model.failureReasons.length > 0) {
-    showReasonPicker(reason => {
-      if (reason !== null && model.currentTurns.length > 0) {
-        model.currentTurns[model.currentTurns.length - 1].reason = reason;
+    showReasonPicker(reasons => {
+      if (model.currentTurns.length > 0) {
+        model.currentTurns[model.currentTurns.length - 1].reasons = reasons;
       }
     });
   }
@@ -1184,7 +1241,10 @@ function drawMissStreamgraph(container) {
   const reasonSet = new Set();
   model.gameDetailsList.forEach(g => {
     if (!g || !g.turns) return;
-    g.turns.forEach(t => { if (t.reason) reasonSet.add(t.reason); });
+    g.turns.forEach(t => {
+      const rs = Array.isArray(t.reasons) ? t.reasons : (t.reason ? [t.reason] : []);
+      rs.forEach(r => reasonSet.add(r));
+    });
   });
   const reasons = [...reasonSet];
 
@@ -1198,8 +1258,11 @@ function drawMissStreamgraph(container) {
     const counts = reasons.map(() => 0);
     if (!g || !g.turns) return counts;
     g.turns.forEach(t => {
-      const idx = reasons.indexOf(t.reason);
-      if (idx >= 0) counts[idx]++;
+      const rs = Array.isArray(t.reasons) ? t.reasons : (t.reason ? [t.reason] : []);
+      rs.forEach(r => {
+        const idx = reasons.indexOf(r);
+        if (idx >= 0) counts[idx]++;
+      });
     });
     return counts;
   });
@@ -1296,34 +1359,39 @@ function updateConfigTab() {
 }
 
 /* ============================================================
-   Reason picker
+   Reason picker (multi-select)
    ============================================================ */
 let _reasonCallback = null;
+let _selectedReasons = new Set();
 
 function showReasonPicker(callback) {
   _reasonCallback = callback;
+  _selectedReasons = new Set();
   const opts = $('reason-options');
   opts.innerHTML = '';
 
   model.failureReasons.forEach(r => {
     const btn = document.createElement('button');
     btn.className = 'reason-option';
-    btn.textContent = r;
+    btn.dataset.reason = r;
+    const check = document.createElement('span');
+    check.className = 'reason-check';
+    check.textContent = '✓';
+    btn.appendChild(check);
+    const label = document.createElement('span');
+    label.textContent = r;
+    btn.appendChild(label);
     btn.addEventListener('click', () => {
-      closeReasonPicker();
-      if (_reasonCallback) _reasonCallback(r);
+      if (_selectedReasons.has(r)) {
+        _selectedReasons.delete(r);
+        btn.classList.remove('selected');
+      } else {
+        _selectedReasons.add(r);
+        btn.classList.add('selected');
+      }
     });
     opts.appendChild(btn);
   });
-
-  const skip = document.createElement('button');
-  skip.className = 'reason-option skip';
-  skip.textContent = 'Skip';
-  skip.addEventListener('click', () => {
-    closeReasonPicker();
-    if (_reasonCallback) _reasonCallback(null);
-  });
-  opts.appendChild(skip);
 
   const overlay = $('reason-overlay');
   overlay.style.display = 'block';
@@ -1336,10 +1404,21 @@ function closeReasonPicker() {
   setTimeout(() => { overlay.style.display = 'none'; }, 280);
 }
 
+$('reason-confirm').addEventListener('click', () => {
+  const selected = [..._selectedReasons];
+  closeReasonPicker();
+  if (_reasonCallback) _reasonCallback(selected);
+});
+
+$('reason-skip').addEventListener('click', () => {
+  closeReasonPicker();
+  if (_reasonCallback) _reasonCallback([]);
+});
+
 $('reason-overlay').addEventListener('click', e => {
   if (e.target === $('reason-overlay')) {
     closeReasonPicker();
-    if (_reasonCallback) _reasonCallback(null);
+    if (_reasonCallback) _reasonCallback([]);
   }
 });
 
@@ -1450,8 +1529,9 @@ function showGameDetail(idx) {
         <td>${t.total}</td>
         <td class="td-moy">${t.moyenne.toFixed(2)}</td>
       </tr>`;
-      const reasonRow = t.reason
-        ? `<tr><td colspan="4" class="td-reason">${t.reason}</td></tr>`
+      const rs = Array.isArray(t.reasons) ? t.reasons : (t.reason ? [t.reason] : []);
+      const reasonRow = rs.length > 0
+        ? `<tr><td colspan="4" class="td-reason">${rs.join(', ')}</td></tr>`
         : '';
       return mainRow + reasonRow;
     }).join('');

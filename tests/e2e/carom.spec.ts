@@ -12,7 +12,7 @@ async function pressNumpad(page: Page, key: string) {
  * Called after every + press since the picker now appears on every turn.
  */
 async function skipReasonPicker(page: Page) {
-  const skip = page.locator('#reason-options .reason-option.skip')
+  const skip = page.locator('#reason-skip')
   await expect(skip).toBeVisible()
   await skip.click()
   // Wait for the picker to finish closing
@@ -282,16 +282,19 @@ test.describe('Reason picker', () => {
 
     await expect(page.locator('#reason-overlay')).toHaveClass(/open/)
 
-    await page.locator('#reason-options .reason-option.skip').click()
+    await page.locator('#reason-skip').click()
     await expect(page.locator('#reason-overlay')).not.toHaveClass(/open/)
   })
 
-  test('selecting a reason stores it with the turn', async ({ page }) => {
+  test('selecting reasons stores them with the turn', async ({ page }) => {
     await pressNumpad(page, '2')
     await page.locator('#btn-add-score').click()
 
-    // Pick the first reason ("Too soft")
-    await page.locator('#reason-options .reason-option').first().click()
+    // Toggle first two reasons ("Too soft", "Too hard")
+    await page.locator('#reason-options .reason-option').nth(0).click()
+    await page.locator('#reason-options .reason-option').nth(1).click()
+    // Confirm selection
+    await page.locator('#reason-confirm').click()
     await expect(page.locator('#reason-overlay')).not.toHaveClass(/open/)
 
     // End the game and inspect stored details
@@ -304,7 +307,7 @@ test.describe('Reason picker', () => {
       return arr[arr.length - 1]
     })
     expect(details).not.toBeNull()
-    expect(details.turns[0].reason).toBe('Too soft')
+    expect(details.turns[0].reasons).toEqual(['Too soft', 'Too hard'])
   })
 
   test('picker closes when tapping backdrop and stores no reason', async ({ page }) => {
@@ -373,7 +376,8 @@ test.describe('Game detail modal', () => {
     // Play a turn and pick a reason
     await pressNumpad(page, '3')
     await page.locator('#btn-add-score').click()
-    await page.locator('#reason-options .reason-option').first().click() // "Too soft"
+    await page.locator('#reason-options .reason-option').first().click() // toggle "Too soft"
+    await page.locator('#reason-confirm').click() // confirm selection
 
     await page.locator('#btn-end').click()
 
