@@ -156,6 +156,24 @@ html, body {
 }
 .add-row button:active { background: var(--primary-dim); }
 
+/* In-game live chart */
+.game-chart-wrap {
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  display: none;
+}
+.game-chart-wrap.visible { display: block; }
+.game-chart-wrap .chart-legend {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.game-chart-wrap .chart-legend span { display: flex; align-items: center; gap: 4px; }
+
 /* Action buttons */
 .action-buttons {
   display: flex;
@@ -701,6 +719,14 @@ html, body {
     <button class="btn-end" id="btn-end">End Game</button>
   </div>
 
+  <div class="game-chart-wrap" id="game-chart-wrap">
+    <div id="game-chart"></div>
+    <div class="chart-legend">
+      <span><svg width="20" height="4"><line x1="0" y1="2" x2="20" y2="2" stroke="#bb86fc" stroke-width="2"/></svg> Moyenne</span>
+      <span><svg width="8" height="8"><circle cx="4" cy="4" r="3" fill="#cf6679"/></svg> Zero turn</span>
+    </div>
+  </div>
+
   <div class="result-table-wrap">
     <table class="result-table">
       <thead>
@@ -1018,7 +1044,7 @@ class CaromModel {
 
   showNeeded(currentScore, playedTurns, targetScore, targetStep, numTurns = 10) {
     const result = [];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 5; i++) {
       result.push(this.showNeededForPerc(currentScore, playedTurns, targetScore + targetStep * i, numTurns));
     }
     return result;
@@ -1126,6 +1152,13 @@ function syncView() {
   fZeros.textContent = model.numZeroScores;
   addDisp.textContent = model.addScoreValue;
   updateResultTable();
+  const chartWrap = $('game-chart-wrap');
+  if (model.currentTurns.length > 0) {
+    chartWrap.classList.add('visible');
+    drawMoyenneChart(model.currentTurns, $('game-chart'));
+  } else {
+    chartWrap.classList.remove('visible');
+  }
 }
 
 /* --- Result table --- */
