@@ -297,6 +297,30 @@ html, body {
 .projection-row .proj-label { color: var(--muted); font-size: 13px; }
 .projection-row .proj-value { font-weight: 600; font-size: 14px; }
 
+/* Session summary */
+#session-summary {
+  display: none;
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+#session-summary.active { display: block; }
+.session-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.session-flow { color: var(--on-bg); }
+.session-flow .s-kicked { color: var(--muted); }
+.session-flow .s-arrow { color: var(--muted); margin: 0 4px; }
+.session-avg { margin-top: 6px; font-weight: 600; }
+.session-avg .s-arrow { color: var(--muted); margin: 0 4px; }
+.avg-improved { color: #4caf50; }
+.avg-declined { color: #f44336; }
+
 /* Collapsible moyennes list */
 .collapsible-header {
   display: flex;
@@ -757,6 +781,8 @@ html, body {
 
   <div class="projections" id="ov-projections"></div>
 
+  <div id="session-summary"></div>
+
   <div class="collapsible-header" id="moy-header">
     <span>Previous Moyennes (20)</span>
     <span class="arrow">&#9660;</span>
@@ -848,6 +874,7 @@ class CaromModel {
   static STORAGE_KEY = 'carom_moyennes';
   static DETAILS_KEY = 'carom_game_details';
   static REASONS_KEY = 'carom_failure_reasons';
+  static SESSION_KEY = 'carom_session';
   static DEFAULT_REASONS = ['Too soft', 'Too hard', 'Wrong angle', 'Wrong english', 'Miscue'];
 
   constructor() {
@@ -862,6 +889,7 @@ class CaromModel {
     this.gameDetailsList = this.loadDetails();
     this.failureReasons = this.loadReasons();
     this.currentTurns = [];
+    this.session = this.loadSession();
   }
 
   /* --- Persistence --- */
@@ -926,6 +954,22 @@ class CaromModel {
     localStorage.setItem(CaromModel.REASONS_KEY, JSON.stringify(this.failureReasons));
   }
 
+  loadSession() {
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      const raw = localStorage.getItem(CaromModel.SESSION_KEY);
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (s.date === today) return s;
+      }
+    } catch (_) {}
+    return { date: today, preAvg: null, kicked: [], added: [] };
+  }
+
+  saveSession() {
+    localStorage.setItem(CaromModel.SESSION_KEY, JSON.stringify(this.session));
+  }
+
   addReason(text) {
     const trimmed = text.trim();
     if (!trimmed || this.failureReasons.includes(trimmed)) return false;
@@ -978,6 +1022,12 @@ class CaromModel {
   endGame() {
     if (this.playedTurns > 0) {
       const gm = Math.round(this.getCurrentMoyenne() * 100) / 100;
+      if (this.session.preAvg === null) {
+        this.session.preAvg = Math.round(this.getAvgMoyenne() * 100) / 100;
+      }
+      this.session.kicked.push(this.moyennesList[0]);
+      this.session.added.push(gm);
+      this.saveSession();
       this.moyennesList.shift();
       this.moyennesList.push(gm);
       this.save();
@@ -998,6 +1048,12 @@ class CaromModel {
   }
 
   addMoyenneToList(moyenne) {
+    if (this.session.preAvg === null) {
+      this.session.preAvg = Math.round(this.getAvgMoyenne() * 100) / 100;
+    }
+    this.session.kicked.push(this.moyennesList[0]);
+    this.session.added.push(moyenne);
+    this.saveSession();
     this.moyennesList.shift();
     this.moyennesList.push(moyenne);
     this.save();
@@ -1216,6 +1272,26 @@ function formatGameDate(isoString) {
   return `${date.toLocaleDateString([], opts)} ${time}`;
 }
 
+function renderSessionSummary() {
+  const el = $('session-summary');
+  const s = model.session;
+  if (!s.kicked.length) {
+    el.classList.remove('active');
+    return;
+  }
+  el.classList.add('active');
+  const kickedStr = s.kicked.map(m => m.toFixed(2)).join(', ');
+  const addedStr = s.added.map(m => m.toFixed(2)).join(', ');
+  const currentAvg = Math.round(model.getAvgMoyenne() * 100) / 100;
+  const improved = currentAvg >= s.preAvg;
+  const avgClass = improved ? 'avg-improved' : 'avg-declined';
+  el.innerHTML = `
+    <div class="session-label">Today's changes</div>
+    <div class="session-flow"><span class="s-kicked">${kickedStr}</span><span class="s-arrow">→</span>${addedStr}</div>
+    <div class="session-avg ${avgClass}">${s.preAvg.toFixed(2)}<span class="s-arrow">→</span>${currentAvg.toFixed(2)}</div>
+  `;
+}
+
 function updateOverallTab() {
   const avg = model.getAvgMoyenne();
   $('ov-avg').textContent = avg.toFixed(2);
@@ -1231,6 +1307,8 @@ function updateOverallTab() {
     div.innerHTML = `<span class="proj-label">Target ${stepped.toFixed(2)}</span><span class="proj-value">${expected.toFixed(2)}</span>`;
     projWrap.appendChild(div);
   }
+
+  renderSessionSummary();
 
   const list = $('moy-list');
   list.innerHTML = '';

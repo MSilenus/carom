@@ -42,6 +42,7 @@ test.beforeEach(async ({ page }) => {
   await page.evaluate(() => {
     localStorage.removeItem('carom_moyennes')
     localStorage.removeItem('carom_game_details')
+    localStorage.removeItem('carom_session')
     // Keep failure reasons so reason picker tests work;
     // tests that don't want the picker use addTurn() which handles it.
   })
@@ -426,5 +427,96 @@ test.describe('Close detail modal', () => {
     await expect(page.locator('#detail-overlay')).not.toHaveClass(/open/)
     await page.waitForTimeout(350)
     await expect(page.locator('#detail-overlay')).toBeHidden()
+  })
+})
+
+// ============================================================
+// Session summary
+// ============================================================
+
+test.describe('Session summary', () => {
+  test('hidden before any game is played today', async ({ page }) => {
+    await page.locator('.tab-bar button[data-tab="overall"]').click()
+    await expect(page.locator('#session-summary')).not.toHaveClass(/active/)
+  })
+
+  test('appears after ending a game with kicked and added moyennes', async ({ page }) => {
+    await addTurn(page, 4)
+    await addTurn(page, 6)
+    await page.locator('#btn-end').click()
+
+    await page.locator('.tab-bar button[data-tab="overall"]').click()
+
+    const summary = page.locator('#session-summary')
+    await expect(summary).toHaveClass(/active/)
+
+    // Line 1: kicked → added (moyenne is 10/2 = 5.00)
+    const flow = summary.locator('.session-flow')
+    await expect(flow).toContainText('→')
+    await expect(flow).toContainText('5.00')
+
+    // Line 2: avg before → avg after
+    const avg = summary.locator('.session-avg')
+    await expect(avg).toContainText('→')
+  })
+
+  test('avg line is green when average improves', async ({ page }) => {
+    // Seed a list of low moyennes so our game (5.00) improves the avg
+    await page.evaluate(() => {
+      localStorage.setItem('carom_moyennes', JSON.stringify(Array(20).fill(0.50)))
+    })
+    await page.reload()
+    await page.waitForLoadState('domcontentloaded')
+
+    await addTurn(page, 5)
+    await page.locator('#btn-end').click()
+
+    await page.locator('.tab-bar button[data-tab="overall"]').click()
+
+    await expect(page.locator('#session-summary .session-avg')).toHaveClass(/avg-improved/)
+  })
+
+  test('avg line is red when average declines', async ({ page }) => {
+    // Seed a list of high moyennes so our game (1.00) hurts the avg
+    await page.evaluate(() => {
+      localStorage.setItem('carom_moyennes', JSON.stringify(Array(20).fill(5.00)))
+    })
+    await page.reload()
+    await page.waitForLoadState('domcontentloaded')
+
+    await addTurn(page, 1)
+    await page.locator('#btn-end').click()
+
+    await page.locator('.tab-bar button[data-tab="overall"]').click()
+
+    await expect(page.locator('#session-summary .session-avg')).toHaveClass(/avg-declined/)
+  })
+
+  test('accumulates multiple games played today', async ({ page }) => {
+    // Game 1: 4 points / 1 turn = 4.00
+    await addTurn(page, 4)
+    await page.locator('#btn-end').click()
+
+    // Game 2: 6 points / 1 turn = 6.00
+    await addTurn(page, 6)
+    await page.locator('#btn-end').click()
+
+    await page.locator('.tab-bar button[data-tab="overall"]').click()
+
+    // Both added moyennes should appear
+    const flow = page.locator('#session-summary .session-flow')
+    await expect(flow).toContainText('4.00')
+    await expect(flow).toContainText('6.00')
+  })
+
+  test('session persists across page reload within same day', async ({ page }) => {
+    await addTurn(page, 4)
+    await page.locator('#btn-end').click()
+
+    await page.reload()
+    await page.waitForLoadState('domcontentloaded')
+    await page.locator('.tab-bar button[data-tab="overall"]').click()
+
+    await expect(page.locator('#session-summary')).toHaveClass(/active/)
   })
 })
