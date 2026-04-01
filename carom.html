@@ -479,24 +479,20 @@ html, body {
   flex-shrink: 0;
 }
 .setup-item.active { border-color: var(--primary); }
+.setup-item-info { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .setup-name { font-size: 14px; font-weight: 600; }
 .setup-coords { font-size: 10px; color: var(--muted); font-family: monospace; }
-.pos-actions {
-  display: flex;
-  gap: 8px;
-  padding: 6px 8px;
-  flex-shrink: 0;
-  border-top: 1px solid var(--border);
-}
-.pos-delete-btn {
-  flex: 1; min-height: 38px;
-  font-size: 13px; font-weight: 600;
-  border-radius: 8px; cursor: pointer;
-  border: 1px solid var(--danger);
-  background: var(--surface);
+.setup-del {
+  background: none;
+  border: none;
   color: var(--danger);
+  font-size: 20px;
+  line-height: 1;
+  padding: 4px 4px 4px 12px;
+  cursor: pointer;
+  flex-shrink: 0;
 }
-.pos-delete-btn:active { opacity: .7; }
+.setup-del:active { opacity: .6; }
 
 /* ---- Config tab ---- */
 .config-tab { padding: 10px; gap: 12px; }
@@ -925,9 +921,6 @@ html, body {
     <button id="pos-save" class="pos-save-btn">Save</button>
   </div>
   <div class="setups-list" id="setups-list"></div>
-  <div class="pos-actions">
-    <button id="pos-delete" class="pos-delete-btn">Delete</button>
-  </div>
 </div>
 
 <!-- Config tab -->
@@ -2014,6 +2007,17 @@ document.querySelectorAll('.ball-btn').forEach(btn => {
   });
 });
 
+function posDeleteSetup(i) {
+  if (posSetups.length <= 1) return;
+  posSetups.splice(i, 1);
+  posSelIdx = Math.min(posSelIdx, posSetups.length - 1);
+  posCur = [...posSetups[posSelIdx].positions];
+  $('pos-name').value = posSetups[posSelIdx].name;
+  posSaveStorage();
+  posRenderList();
+  posRedraw();
+}
+
 function posRenderList() {
   const list = $('setups-list');
   list.innerHTML = '';
@@ -2022,12 +2026,19 @@ function posRenderList() {
     const div = document.createElement('div');
     div.className = 'setup-item' + (i === posSelIdx ? ' active' : '');
     div.innerHTML =
-      `<span class="setup-name">${s.name}</span>` +
-      `<span class="setup-coords">` +
-        `W(${p[0].toFixed(2)},${p[1].toFixed(2)}) ` +
-        `Y(${p[2].toFixed(2)},${p[3].toFixed(2)}) ` +
-        `R(${p[4].toFixed(2)},${p[5].toFixed(2)})` +
-      `</span>`;
+      `<div class="setup-item-info">` +
+        `<span class="setup-name">${s.name}</span>` +
+        `<span class="setup-coords">` +
+          `W(${p[0].toFixed(2)},${p[1].toFixed(2)}) ` +
+          `Y(${p[2].toFixed(2)},${p[3].toFixed(2)}) ` +
+          `R(${p[4].toFixed(2)},${p[5].toFixed(2)})` +
+        `</span>` +
+      `</div>` +
+      `<button class="setup-del" title="Delete">×</button>`;
+    div.querySelector('.setup-del').addEventListener('click', e => {
+      e.stopPropagation();
+      posDeleteSetup(i);
+    });
     div.addEventListener('click', () => posSelectSetup(i));
     list.appendChild(div);
   });
@@ -2055,16 +2066,6 @@ $('pos-save').addEventListener('click', () => {
   posRenderList();
 });
 
-$('pos-delete').addEventListener('click', () => {
-  if (posSetups.length <= 1) return;
-  posSetups.splice(posSelIdx, 1);
-  posSelIdx = Math.min(posSelIdx, posSetups.length - 1);
-  posCur = [...posSetups[posSelIdx].positions];
-  $('pos-name').value = posSetups[posSelIdx].name;
-  posSaveStorage();
-  posRenderList();
-  posRedraw();
-});
 
 function initPositionsTab() {
   posResize();
