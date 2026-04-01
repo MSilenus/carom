@@ -393,6 +393,111 @@ html, body {
 }
 .io-buttons button:active { opacity: .7; }
 
+/* ---- Positions tab ---- */
+.positions-tab { overflow: hidden; }
+
+.table-wrap {
+  width: 100%;
+  position: relative;
+  flex-shrink: 0;
+}
+.table-wrap::before {
+  content: '';
+  display: block;
+  padding-bottom: 50%;
+}
+#pos-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
+}
+.pos-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.ball-btns { display: flex; gap: 4px; flex-shrink: 0; }
+.ball-btn {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  font-weight: 700; font-size: 13px;
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.ball-btn[data-ball="0"] { background: #e8e8e8; color: #333; }
+.ball-btn[data-ball="1"] { background: #f5c518; color: #333; }
+.ball-btn[data-ball="2"] { background: #e53935; color: #fff; }
+.ball-btn.active { border-color: var(--primary); }
+.pos-name-input {
+  flex: 1;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--on-bg);
+  padding: 7px 8px;
+  font-size: 13px;
+  min-width: 0;
+}
+.pos-name-input:focus { border-color: var(--primary); outline: none; }
+.pos-save-btn {
+  min-width: 52px; min-height: 36px;
+  background: var(--primary);
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px; font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.pos-save-btn:active { background: var(--primary-dim); }
+.setups-list {
+  flex: 1; min-height: 0;
+  overflow-y: auto;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.setup-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--surface);
+  border-radius: 8px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color .15s;
+  flex-shrink: 0;
+}
+.setup-item.active { border-color: var(--primary); }
+.setup-name { font-size: 14px; font-weight: 600; }
+.setup-coords { font-size: 10px; color: var(--muted); font-family: monospace; }
+.pos-actions {
+  display: flex;
+  gap: 8px;
+  padding: 6px 8px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+}
+.pos-delete-btn {
+  flex: 1; min-height: 38px;
+  font-size: 13px; font-weight: 600;
+  border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--danger);
+  background: var(--surface);
+  color: var(--danger);
+}
+.pos-delete-btn:active { opacity: .7; }
+
 /* ---- Config tab ---- */
 .config-tab { padding: 10px; gap: 12px; }
 .config-section-title {
@@ -694,6 +799,7 @@ html, body {
 <div class="tab-bar">
   <button class="active" data-tab="game">Game</button>
   <button data-tab="overall">Overall</button>
+  <button data-tab="positions">Positions</button>
   <button data-tab="config">Config</button>
 </div>
 
@@ -802,6 +908,26 @@ html, body {
     <button id="btn-import">Import</button>
   </div>
   <input type="file" id="file-import" accept=".json" style="display:none">
+</div>
+
+<!-- Positions tab -->
+<div id="tab-positions" class="tab-content positions-tab">
+  <div class="table-wrap">
+    <canvas id="pos-canvas"></canvas>
+  </div>
+  <div class="pos-controls">
+    <div class="ball-btns">
+      <button class="ball-btn active" data-ball="0">W</button>
+      <button class="ball-btn" data-ball="1">Y</button>
+      <button class="ball-btn" data-ball="2">R</button>
+    </div>
+    <input type="text" id="pos-name" class="pos-name-input" placeholder="Setup name…">
+    <button id="pos-save" class="pos-save-btn">Save</button>
+  </div>
+  <div class="setups-list" id="setups-list"></div>
+  <div class="pos-actions">
+    <button id="pos-delete" class="pos-delete-btn">Delete</button>
+  </div>
 </div>
 
 <!-- Config tab -->
@@ -1141,6 +1267,7 @@ document.querySelectorAll('.tab-bar button').forEach(btn => {
     btn.classList.add('active');
     $('tab-' + btn.dataset.tab).classList.add('active');
     if (btn.dataset.tab === 'overall') updateOverallTab();
+    if (btn.dataset.tab === 'positions') initPositionsTab();
     if (btn.dataset.tab === 'config') updateConfigTab();
   });
 });
@@ -1688,6 +1815,269 @@ $('file-import').addEventListener('change', (e) => {
   };
   reader.readAsText(file);
   e.target.value = '';
+});
+
+/* ============================================================
+   Positions Tab
+   ============================================================ */
+const POSITIONS_KEY = 'carom_positions';
+const BALL_FILL         = ['#eeeeee', '#f5c518', '#e53935'];
+const BALL_STROKE_COLOR = ['#aaaaaa', '#c8a000', '#b02020'];
+const BALL_TEXT         = ['#333', '#333', '#fff'];
+const BALL_LABELS       = ['W', 'Y', 'R'];
+
+function posDefaultSetup(n) {
+  return { name: 'Setup ' + n, positions: [0.25, 0.5, 0.75, 0.75, 0.5, 0.25] };
+}
+
+let posSetups = (() => {
+  try {
+    const raw = localStorage.getItem(POSITIONS_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr) && arr.length > 0) return arr;
+    }
+  } catch (_) {}
+  return [posDefaultSetup(1)];
+})();
+
+let posSelIdx  = 0;
+let posActBall = 0;
+let posCur     = [...posSetups[0].positions];
+
+function posSaveStorage() {
+  localStorage.setItem(POSITIONS_KEY, JSON.stringify(posSetups));
+}
+
+const posCanvas = $('pos-canvas');
+const posCtx    = posCanvas.getContext('2d');
+
+function posResize() {
+  posCanvas.width  = posCanvas.offsetWidth  || 300;
+  posCanvas.height = posCanvas.offsetHeight || 150;
+}
+
+function posGeom() {
+  const W = posCanvas.width, H = posCanvas.height;
+  const r = Math.min(W, H) * 0.065;
+  return { W, H, r, px: r, py: r, pw: W - 2 * r, ph: H - 2 * r };
+}
+
+function posN2C(nx, ny, g) {
+  return { x: g.px + nx * g.pw, y: g.py + ny * g.ph };
+}
+
+function posC2N(cx, cy, g) {
+  return [
+    Math.max(0, Math.min(1, (cx - g.px) / g.pw)),
+    Math.max(0, Math.min(1, (cy - g.py) / g.ph))
+  ];
+}
+
+function posDiamond(x, y, s) {
+  posCtx.beginPath();
+  posCtx.moveTo(x, y - s);
+  posCtx.lineTo(x + s, y);
+  posCtx.lineTo(x, y + s);
+  posCtx.lineTo(x - s, y);
+  posCtx.closePath();
+  posCtx.fill();
+}
+
+function posDrawTable(positions) {
+  const g = posGeom();
+  const { W, H, r, px, py, pw, ph } = g;
+
+  posCtx.fillStyle = '#5c3317';
+  posCtx.fillRect(0, 0, W, H);
+
+  posCtx.fillStyle = '#1a6b3a';
+  posCtx.fillRect(px, py, pw, ph);
+
+  posCtx.strokeStyle = '#23914d';
+  posCtx.lineWidth = Math.max(2, r * 0.12);
+  posCtx.strokeRect(px, py, pw, ph);
+
+  const ds = Math.min(W, H) * 0.013;
+  posCtx.fillStyle = '#ddd';
+  for (let i = 1; i <= 7; i++) {
+    const x = px + (i / 8) * pw;
+    posDiamond(x, py - r * 0.42, ds);
+    posDiamond(x, py + ph + r * 0.42, ds);
+  }
+  for (let i = 1; i <= 3; i++) {
+    const y = py + (i / 4) * ph;
+    posDiamond(px - r * 0.42, y, ds);
+    posDiamond(px + pw + r * 0.42, y, ds);
+  }
+
+  posCtx.fillStyle = 'rgba(255,255,255,0.2)';
+  posCtx.beginPath();
+  posCtx.arc(px + pw / 2, py + ph / 2, ds, 0, 2 * Math.PI);
+  posCtx.fill();
+
+  const br = Math.min(pw, ph) * 0.06;
+  for (let i = 0; i < 3; i++) {
+    const { x, y } = posN2C(positions[i * 2], positions[i * 2 + 1], g);
+
+    posCtx.fillStyle = 'rgba(0,0,0,0.22)';
+    posCtx.beginPath();
+    posCtx.arc(x + br * 0.18, y + br * 0.18, br, 0, 2 * Math.PI);
+    posCtx.fill();
+
+    posCtx.fillStyle = BALL_FILL[i];
+    posCtx.beginPath();
+    posCtx.arc(x, y, br, 0, 2 * Math.PI);
+    posCtx.fill();
+
+    posCtx.strokeStyle = BALL_STROKE_COLOR[i];
+    posCtx.lineWidth = 1.5;
+    posCtx.beginPath();
+    posCtx.arc(x, y, br, 0, 2 * Math.PI);
+    posCtx.stroke();
+
+    posCtx.fillStyle = BALL_TEXT[i];
+    posCtx.font = `bold ${Math.round(br)}px sans-serif`;
+    posCtx.textAlign = 'center';
+    posCtx.textBaseline = 'middle';
+    posCtx.fillText(BALL_LABELS[i], x, y);
+
+    if (i === posActBall) {
+      posCtx.strokeStyle = '#bb86fc';
+      posCtx.lineWidth = 2.5;
+      posCtx.setLineDash([4, 3]);
+      posCtx.beginPath();
+      posCtx.arc(x, y, br + 4, 0, 2 * Math.PI);
+      posCtx.stroke();
+      posCtx.setLineDash([]);
+    }
+  }
+}
+
+function posRedraw() { posDrawTable(posCur); }
+
+function posPtrPos(e) {
+  const rect = posCanvas.getBoundingClientRect();
+  return {
+    cx: (e.clientX - rect.left) * (posCanvas.width  / rect.width),
+    cy: (e.clientY - rect.top)  * (posCanvas.height / rect.height)
+  };
+}
+
+function posBallAt(cx, cy, g) {
+  const hitR = Math.min(g.pw, g.ph) * 0.06 * 1.6;
+  for (let i = 0; i < 3; i++) {
+    const { x, y } = posN2C(posCur[i * 2], posCur[i * 2 + 1], g);
+    if (Math.hypot(cx - x, cy - y) <= hitR) return i;
+  }
+  return -1;
+}
+
+posCanvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  posCanvas.setPointerCapture(e.pointerId);
+  const g = posGeom();
+  const { cx, cy } = posPtrPos(e);
+  const hit = posBallAt(cx, cy, g);
+  if (hit !== -1) {
+    posActBall = hit;
+    posUpdateBallBtns();
+  }
+  const [nx, ny] = posC2N(cx, cy, g);
+  posCur[posActBall * 2]     = nx;
+  posCur[posActBall * 2 + 1] = ny;
+  posRedraw();
+});
+
+posCanvas.addEventListener('pointermove', e => {
+  if (!e.buttons) return;
+  e.preventDefault();
+  const g = posGeom();
+  const { cx, cy } = posPtrPos(e);
+  const [nx, ny] = posC2N(cx, cy, g);
+  posCur[posActBall * 2]     = nx;
+  posCur[posActBall * 2 + 1] = ny;
+  posRedraw();
+});
+
+function posUpdateBallBtns() {
+  document.querySelectorAll('.ball-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', i === posActBall);
+  });
+}
+
+document.querySelectorAll('.ball-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    posActBall = parseInt(btn.dataset.ball);
+    posUpdateBallBtns();
+    posRedraw();
+  });
+});
+
+function posRenderList() {
+  const list = $('setups-list');
+  list.innerHTML = '';
+  posSetups.forEach((s, i) => {
+    const p = s.positions;
+    const div = document.createElement('div');
+    div.className = 'setup-item' + (i === posSelIdx ? ' active' : '');
+    div.innerHTML =
+      `<span class="setup-name">${s.name}</span>` +
+      `<span class="setup-coords">` +
+        `W(${p[0].toFixed(2)},${p[1].toFixed(2)}) ` +
+        `Y(${p[2].toFixed(2)},${p[3].toFixed(2)}) ` +
+        `R(${p[4].toFixed(2)},${p[5].toFixed(2)})` +
+      `</span>`;
+    div.addEventListener('click', () => posSelectSetup(i));
+    list.appendChild(div);
+  });
+}
+
+function posSelectSetup(idx) {
+  posSelIdx = idx;
+  posCur = [...posSetups[idx].positions];
+  $('pos-name').value = posSetups[idx].name;
+  posRenderList();
+  posRedraw();
+}
+
+$('pos-save').addEventListener('click', () => {
+  const name = $('pos-name').value.trim() || `Setup ${posSetups.length + 1}`;
+  const existing = posSetups.findIndex(s => s.name === name);
+  if (existing !== -1) {
+    posSetups[existing] = { name, positions: [...posCur] };
+    posSelIdx = existing;
+  } else {
+    posSetups.push({ name, positions: [...posCur] });
+    posSelIdx = posSetups.length - 1;
+  }
+  posSaveStorage();
+  posRenderList();
+});
+
+$('pos-delete').addEventListener('click', () => {
+  if (posSetups.length <= 1) return;
+  posSetups.splice(posSelIdx, 1);
+  posSelIdx = Math.min(posSelIdx, posSetups.length - 1);
+  posCur = [...posSetups[posSelIdx].positions];
+  $('pos-name').value = posSetups[posSelIdx].name;
+  posSaveStorage();
+  posRenderList();
+  posRedraw();
+});
+
+function initPositionsTab() {
+  posResize();
+  $('pos-name').value = posSetups[posSelIdx].name;
+  posRenderList();
+  posRedraw();
+}
+
+window.addEventListener('resize', () => {
+  if ($('tab-positions').classList.contains('active')) {
+    posResize();
+    posRedraw();
+  }
 });
 
 /* --- Initial render --- */
