@@ -1777,11 +1777,17 @@ function showGameDetail(idx) {
 
 /* --- Export / Import --- */
 $('btn-export').addEventListener('click', () => {
-  const json = JSON.stringify(model.moyennesList, null, 2);
+  const data = {
+    moyennes: model.moyennesList,
+    gameDetails: model.gameDetailsList,
+    failureReasons: model.failureReasons,
+    positions: posSetups
+  };
+  const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'carom_moyennes.json';
+  a.download = 'carom_backup.json';
   a.click();
   URL.revokeObjectURL(a.href);
 });
@@ -1793,17 +1799,42 @@ $('file-import').addEventListener('change', (e) => {
   const reader = new FileReader();
   reader.onload = () => {
     try {
-      const arr = JSON.parse(reader.result);
-      if (!Array.isArray(arr) || arr.length === 0) throw new Error();
-      const nums = arr.slice(0, 20).map(Number);
-      while (nums.length < 20) nums.push(1.00);
-      model.moyennesList = nums;
-      model.save();
-      model.gameDetailsList = Array(20).fill(null);
-      model.saveDetails();
+      const parsed = JSON.parse(reader.result);
+
+      // Support old format (plain array of moyennes)
+      const raw = Array.isArray(parsed) ? { moyennes: parsed } : parsed;
+
+      if (raw.moyennes) {
+        const nums = raw.moyennes.slice(0, 20).map(Number);
+        while (nums.length < 20) nums.push(1.00);
+        model.moyennesList = nums;
+        model.save();
+      }
+
+      if (raw.gameDetails && Array.isArray(raw.gameDetails)) {
+        model.gameDetailsList = raw.gameDetails;
+        model.saveDetails();
+      } else {
+        model.gameDetailsList = Array(20).fill(null);
+        model.saveDetails();
+      }
+
+      if (raw.failureReasons && Array.isArray(raw.failureReasons)) {
+        model.failureReasons = raw.failureReasons;
+        model.saveReasons();
+        updateConfigTab();
+      }
+
+      if (raw.positions && Array.isArray(raw.positions)) {
+        posSetups = raw.positions;
+        posSelIdx = 0;
+        posCur = [...posSetups[0].positions];
+        posSaveStorage();
+      }
+
       updateOverallTab();
     } catch (_) {
-      alert('Invalid file. Expected a JSON array of numbers.');
+      alert('Invalid backup file.');
     }
   };
   reader.readAsText(file);
