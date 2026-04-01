@@ -696,7 +696,7 @@ html, body {
   overflow: hidden;
   transform: translateY(100%);
   transition: transform .25s cubic-bezier(0.4,0,0.2,1);
-  max-height: 70vh;
+  max-height: 92vh;
 }
 .reason-overlay.open .reason-sheet { transform: translateY(0); }
 .reason-drag {
@@ -719,7 +719,54 @@ html, body {
 }
 .reason-options {
   overflow-y: auto;
-  flex: 1;
+  max-height: 30vh;
+  flex-shrink: 0;
+}
+.reason-pos-wrap {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+}
+.reason-pos-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px 6px;
+}
+.reason-pos-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+.reason-ball-btns { display: flex; gap: 4px; }
+.r-ball-btn {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  font-weight: 700; font-size: 12px;
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.r-ball-btn[data-rball="0"] { background: #e8e8e8; color: #333; }
+.r-ball-btn[data-rball="1"] { background: #f5c518; color: #333; }
+.r-ball-btn[data-rball="2"] { background: #e53935; color: #fff; }
+.r-ball-btn.active { border-color: var(--primary); }
+.reason-table-wrap {
+  width: 100%;
+  position: relative;
+}
+.reason-table-wrap::before {
+  content: '';
+  display: block;
+  padding-bottom: 50%;
+}
+#reason-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
 }
 .reason-option {
   display: flex;
@@ -974,6 +1021,19 @@ html, body {
     <div class="reason-drag"></div>
     <div class="reason-sheet-title">Why did you miss?</div>
     <div class="reason-options" id="reason-options"></div>
+    <div class="reason-pos-wrap">
+      <div class="reason-pos-header">
+        <span class="reason-pos-label">Position</span>
+        <div class="reason-ball-btns">
+          <button class="r-ball-btn active" data-rball="0">W</button>
+          <button class="r-ball-btn" data-rball="1">Y</button>
+          <button class="r-ball-btn" data-rball="2">R</button>
+        </div>
+      </div>
+      <div class="reason-table-wrap">
+        <canvas id="reason-canvas"></canvas>
+      </div>
+    </div>
     <div class="reason-sheet-footer">
       <button class="reason-confirm" id="reason-confirm">Done</button>
       <button class="reason-skip" id="reason-skip">Skip</button>
@@ -1125,7 +1185,8 @@ class CaromModel {
       score: points,
       total: this.currentScore,
       moyenne: Math.round(this.getCurrentMoyenne() * 1000) / 1000,
-      reasons: []
+      reasons: [],
+      position: null
     });
   }
 
@@ -1300,9 +1361,11 @@ $('btn-add-score').addEventListener('click', () => {
   syncView();
   // Every turn ends with a miss — show reason picker if reasons are configured
   if (model.failureReasons.length > 0) {
-    showReasonPicker(reasons => {
+    showReasonPicker((reasons, position) => {
       if (model.currentTurns.length > 0) {
-        model.currentTurns[model.currentTurns.length - 1].reasons = reasons;
+        const turn = model.currentTurns[model.currentTurns.length - 1];
+        turn.reasons = reasons;
+        turn.position = position;
       }
     });
   }
@@ -1598,6 +1661,10 @@ let _selectedReasons = new Set();
 function showReasonPicker(callback) {
   _reasonCallback = callback;
   _selectedReasons = new Set();
+  // Init reason canvas from current positions tab state
+  _rPos = [...posCur];
+  _rActiveBall = 0;
+  rUpdateBallBtns();
   const opts = $('reason-options');
   opts.innerHTML = '';
 
@@ -1626,7 +1693,11 @@ function showReasonPicker(callback) {
 
   const overlay = $('reason-overlay');
   overlay.style.display = 'block';
-  requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add('open')));
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    overlay.classList.add('open');
+    rResize();
+    rRedraw();
+  }));
 }
 
 function closeReasonPicker() {
@@ -1637,19 +1708,20 @@ function closeReasonPicker() {
 
 $('reason-confirm').addEventListener('click', () => {
   const selected = [..._selectedReasons];
+  const position = [..._rPos];
   closeReasonPicker();
-  if (_reasonCallback) _reasonCallback(selected);
+  if (_reasonCallback) _reasonCallback(selected, position);
 });
 
 $('reason-skip').addEventListener('click', () => {
   closeReasonPicker();
-  if (_reasonCallback) _reasonCallback([]);
+  if (_reasonCallback) _reasonCallback([], null);
 });
 
 $('reason-overlay').addEventListener('click', e => {
   if (e.target === $('reason-overlay')) {
     closeReasonPicker();
-    if (_reasonCallback) _reasonCallback([]);
+    if (_reasonCallback) _reasonCallback([], null);
   }
 });
 
@@ -1873,6 +1945,94 @@ function posSaveStorage() {
   localStorage.setItem(POSITIONS_KEY, JSON.stringify(posSetups));
 }
 
+/* ---- Shared canvas drawing ---- */
+function tableGeom(canvas) {
+  const W = canvas.width, H = canvas.height;
+  const r = Math.min(W, H) * 0.065;
+  return { W, H, r, px: r, py: r, pw: W - 2 * r, ph: H - 2 * r };
+}
+
+function tableN2C(nx, ny, g) {
+  return { x: g.px + nx * g.pw, y: g.py + ny * g.ph };
+}
+
+function tableC2N(cx, cy, g) {
+  return [
+    Math.max(0, Math.min(1, (cx - g.px) / g.pw)),
+    Math.max(0, Math.min(1, (cy - g.py) / g.ph))
+  ];
+}
+
+function drawDiamond(ctx, x, y, s) {
+  ctx.beginPath();
+  ctx.moveTo(x, y - s); ctx.lineTo(x + s, y);
+  ctx.lineTo(x, y + s); ctx.lineTo(x - s, y);
+  ctx.closePath(); ctx.fill();
+}
+
+function drawCaromTable(ctx, canvas, positions, activeBall) {
+  const g = tableGeom(canvas);
+  const { W, H, r, px, py, pw, ph } = g;
+
+  ctx.fillStyle = '#5c3317';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#1a6b3a';
+  ctx.fillRect(px, py, pw, ph);
+  ctx.strokeStyle = '#23914d';
+  ctx.lineWidth = Math.max(2, r * 0.12);
+  ctx.strokeRect(px, py, pw, ph);
+
+  const ds = Math.min(W, H) * 0.013;
+  ctx.fillStyle = '#ddd';
+  for (let i = 1; i <= 7; i++) {
+    const x = px + (i / 8) * pw;
+    drawDiamond(ctx, x, py - r * 0.42, ds);
+    drawDiamond(ctx, x, py + ph + r * 0.42, ds);
+  }
+  for (let i = 1; i <= 3; i++) {
+    const y = py + (i / 4) * ph;
+    drawDiamond(ctx, px - r * 0.42, y, ds);
+    drawDiamond(ctx, px + pw + r * 0.42, y, ds);
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.beginPath();
+  ctx.arc(px + pw / 2, py + ph / 2, ds, 0, 2 * Math.PI);
+  ctx.fill();
+
+  const br = Math.min(pw, ph) * 0.06;
+  for (let i = 0; i < 3; i++) {
+    const { x, y } = tableN2C(positions[i * 2], positions[i * 2 + 1], g);
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.beginPath();
+    ctx.arc(x + br * 0.18, y + br * 0.18, br, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.fillStyle = BALL_FILL[i];
+    ctx.beginPath();
+    ctx.arc(x, y, br, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.strokeStyle = BALL_STROKE_COLOR[i];
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x, y, br, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.fillStyle = BALL_TEXT[i];
+    ctx.font = `bold ${Math.round(br)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(BALL_LABELS[i], x, y);
+    if (i === activeBall) {
+      ctx.strokeStyle = '#bb86fc';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.arc(x, y, br + 4, 0, 2 * Math.PI);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+}
+
+/* ---- Positions tab canvas ---- */
 const posCanvas = $('pos-canvas');
 const posCtx    = posCanvas.getContext('2d');
 
@@ -1881,146 +2041,43 @@ function posResize() {
   posCanvas.height = posCanvas.offsetHeight || 150;
 }
 
-function posGeom() {
-  const W = posCanvas.width, H = posCanvas.height;
-  const r = Math.min(W, H) * 0.065;
-  return { W, H, r, px: r, py: r, pw: W - 2 * r, ph: H - 2 * r };
-}
-
-function posN2C(nx, ny, g) {
-  return { x: g.px + nx * g.pw, y: g.py + ny * g.ph };
-}
-
-function posC2N(cx, cy, g) {
-  return [
-    Math.max(0, Math.min(1, (cx - g.px) / g.pw)),
-    Math.max(0, Math.min(1, (cy - g.py) / g.ph))
-  ];
-}
-
-function posDiamond(x, y, s) {
-  posCtx.beginPath();
-  posCtx.moveTo(x, y - s);
-  posCtx.lineTo(x + s, y);
-  posCtx.lineTo(x, y + s);
-  posCtx.lineTo(x - s, y);
-  posCtx.closePath();
-  posCtx.fill();
-}
-
-function posDrawTable(positions) {
-  const g = posGeom();
-  const { W, H, r, px, py, pw, ph } = g;
-
-  posCtx.fillStyle = '#5c3317';
-  posCtx.fillRect(0, 0, W, H);
-
-  posCtx.fillStyle = '#1a6b3a';
-  posCtx.fillRect(px, py, pw, ph);
-
-  posCtx.strokeStyle = '#23914d';
-  posCtx.lineWidth = Math.max(2, r * 0.12);
-  posCtx.strokeRect(px, py, pw, ph);
-
-  const ds = Math.min(W, H) * 0.013;
-  posCtx.fillStyle = '#ddd';
-  for (let i = 1; i <= 7; i++) {
-    const x = px + (i / 8) * pw;
-    posDiamond(x, py - r * 0.42, ds);
-    posDiamond(x, py + ph + r * 0.42, ds);
-  }
-  for (let i = 1; i <= 3; i++) {
-    const y = py + (i / 4) * ph;
-    posDiamond(px - r * 0.42, y, ds);
-    posDiamond(px + pw + r * 0.42, y, ds);
-  }
-
-  posCtx.fillStyle = 'rgba(255,255,255,0.2)';
-  posCtx.beginPath();
-  posCtx.arc(px + pw / 2, py + ph / 2, ds, 0, 2 * Math.PI);
-  posCtx.fill();
-
-  const br = Math.min(pw, ph) * 0.06;
-  for (let i = 0; i < 3; i++) {
-    const { x, y } = posN2C(positions[i * 2], positions[i * 2 + 1], g);
-
-    posCtx.fillStyle = 'rgba(0,0,0,0.22)';
-    posCtx.beginPath();
-    posCtx.arc(x + br * 0.18, y + br * 0.18, br, 0, 2 * Math.PI);
-    posCtx.fill();
-
-    posCtx.fillStyle = BALL_FILL[i];
-    posCtx.beginPath();
-    posCtx.arc(x, y, br, 0, 2 * Math.PI);
-    posCtx.fill();
-
-    posCtx.strokeStyle = BALL_STROKE_COLOR[i];
-    posCtx.lineWidth = 1.5;
-    posCtx.beginPath();
-    posCtx.arc(x, y, br, 0, 2 * Math.PI);
-    posCtx.stroke();
-
-    posCtx.fillStyle = BALL_TEXT[i];
-    posCtx.font = `bold ${Math.round(br)}px sans-serif`;
-    posCtx.textAlign = 'center';
-    posCtx.textBaseline = 'middle';
-    posCtx.fillText(BALL_LABELS[i], x, y);
-
-    if (i === posActBall) {
-      posCtx.strokeStyle = '#bb86fc';
-      posCtx.lineWidth = 2.5;
-      posCtx.setLineDash([4, 3]);
-      posCtx.beginPath();
-      posCtx.arc(x, y, br + 4, 0, 2 * Math.PI);
-      posCtx.stroke();
-      posCtx.setLineDash([]);
-    }
-  }
-}
-
-function posRedraw() { posDrawTable(posCur); }
-
-function posPtrPos(e) {
-  const rect = posCanvas.getBoundingClientRect();
+function canvasPtrPos(canvas, e) {
+  const rect = canvas.getBoundingClientRect();
   return {
-    cx: (e.clientX - rect.left) * (posCanvas.width  / rect.width),
-    cy: (e.clientY - rect.top)  * (posCanvas.height / rect.height)
+    cx: (e.clientX - rect.left) * (canvas.width  / rect.width),
+    cy: (e.clientY - rect.top)  * (canvas.height / rect.height)
   };
 }
 
-function posBallAt(cx, cy, g) {
+function canvasBallAt(canvas, positions, cx, cy) {
+  const g = tableGeom(canvas);
   const hitR = Math.min(g.pw, g.ph) * 0.06 * 1.6;
   for (let i = 0; i < 3; i++) {
-    const { x, y } = posN2C(posCur[i * 2], posCur[i * 2 + 1], g);
+    const { x, y } = tableN2C(positions[i * 2], positions[i * 2 + 1], g);
     if (Math.hypot(cx - x, cy - y) <= hitR) return i;
   }
   return -1;
 }
 
+function posRedraw() { drawCaromTable(posCtx, posCanvas, posCur, posActBall); }
+
 posCanvas.addEventListener('pointerdown', e => {
   e.preventDefault();
   posCanvas.setPointerCapture(e.pointerId);
-  const g = posGeom();
-  const { cx, cy } = posPtrPos(e);
-  const hit = posBallAt(cx, cy, g);
-  if (hit !== -1) {
-    posActBall = hit;
-    posUpdateBallBtns();
-  }
-  const [nx, ny] = posC2N(cx, cy, g);
-  posCur[posActBall * 2]     = nx;
-  posCur[posActBall * 2 + 1] = ny;
+  const { cx, cy } = canvasPtrPos(posCanvas, e);
+  const hit = canvasBallAt(posCanvas, posCur, cx, cy);
+  if (hit !== -1) { posActBall = hit; posUpdateBallBtns(); }
+  const [nx, ny] = tableC2N(cx, cy, tableGeom(posCanvas));
+  posCur[posActBall * 2] = nx; posCur[posActBall * 2 + 1] = ny;
   posRedraw();
 });
 
 posCanvas.addEventListener('pointermove', e => {
   if (!e.buttons) return;
   e.preventDefault();
-  const g = posGeom();
-  const { cx, cy } = posPtrPos(e);
-  const [nx, ny] = posC2N(cx, cy, g);
-  posCur[posActBall * 2]     = nx;
-  posCur[posActBall * 2 + 1] = ny;
+  const { cx, cy } = canvasPtrPos(posCanvas, e);
+  const [nx, ny] = tableC2N(cx, cy, tableGeom(posCanvas));
+  posCur[posActBall * 2] = nx; posCur[posActBall * 2 + 1] = ny;
   posRedraw();
 });
 
@@ -2036,6 +2093,53 @@ document.querySelectorAll('.ball-btn').forEach(btn => {
     posUpdateBallBtns();
     posRedraw();
   });
+});
+
+/* ---- Reason picker canvas ---- */
+const rCanvas = $('reason-canvas');
+const rCtx    = rCanvas.getContext('2d');
+let _rPos        = [0.25, 0.5, 0.75, 0.75, 0.5, 0.25];
+let _rActiveBall = 0;
+
+function rResize() {
+  rCanvas.width  = rCanvas.offsetWidth  || 300;
+  rCanvas.height = rCanvas.offsetHeight || 150;
+}
+
+function rRedraw() { drawCaromTable(rCtx, rCanvas, _rPos, _rActiveBall); }
+
+function rUpdateBallBtns() {
+  document.querySelectorAll('.r-ball-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', i === _rActiveBall);
+  });
+}
+
+document.querySelectorAll('.r-ball-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    _rActiveBall = parseInt(btn.dataset.rball);
+    rUpdateBallBtns();
+    rRedraw();
+  });
+});
+
+rCanvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  rCanvas.setPointerCapture(e.pointerId);
+  const { cx, cy } = canvasPtrPos(rCanvas, e);
+  const hit = canvasBallAt(rCanvas, _rPos, cx, cy);
+  if (hit !== -1) { _rActiveBall = hit; rUpdateBallBtns(); }
+  const [nx, ny] = tableC2N(cx, cy, tableGeom(rCanvas));
+  _rPos[_rActiveBall * 2] = nx; _rPos[_rActiveBall * 2 + 1] = ny;
+  rRedraw();
+});
+
+rCanvas.addEventListener('pointermove', e => {
+  if (!e.buttons) return;
+  e.preventDefault();
+  const { cx, cy } = canvasPtrPos(rCanvas, e);
+  const [nx, ny] = tableC2N(cx, cy, tableGeom(rCanvas));
+  _rPos[_rActiveBall * 2] = nx; _rPos[_rActiveBall * 2 + 1] = ny;
+  rRedraw();
 });
 
 function posDeleteSetup(i) {
