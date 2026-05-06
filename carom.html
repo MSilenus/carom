@@ -414,6 +414,15 @@ html, body {
   touch-action: none;
   cursor: crosshair;
 }
+.ball-selector-row {
+  display: flex;
+  gap: 12px;
+  padding: 10px 12px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.ball-selector-row .ball-btn { flex: 1; }
 .pos-controls {
   display: flex;
   align-items: center;
@@ -423,14 +432,14 @@ html, body {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
-.ball-btns { display: flex; gap: 4px; flex-shrink: 0; }
 .ball-btn {
-  width: 38px; height: 38px;
-  border-radius: 50%;
+  height: 52px;
+  border-radius: 10px;
   border: 3px solid transparent;
-  font-weight: 700; font-size: 13px;
+  font-weight: 700; font-size: 15px;
   cursor: pointer;
-  transition: border-color .15s;
+  transition: border-color .15s, background .15s;
+  -webkit-tap-highlight-color: transparent;
 }
 .ball-btn[data-ball="0"] { background: #e8e8e8; color: #333; }
 .ball-btn[data-ball="1"] { background: #f5c518; color: #333; }
@@ -738,14 +747,21 @@ html, body {
   text-transform: uppercase;
   letter-spacing: .5px;
 }
-.reason-ball-btns { display: flex; gap: 4px; }
+.reason-ball-selector-row {
+  display: flex;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.reason-ball-selector-row .r-ball-btn { flex: 1; }
 .r-ball-btn {
-  width: 32px; height: 32px;
-  border-radius: 50%;
+  height: 48px;
+  border-radius: 10px;
   border: 3px solid transparent;
-  font-weight: 700; font-size: 12px;
+  font-weight: 700; font-size: 14px;
   cursor: pointer;
-  transition: border-color .15s;
+  transition: border-color .15s, background .15s;
+  -webkit-tap-highlight-color: transparent;
 }
 .r-ball-btn[data-rball="0"] { background: #e8e8e8; color: #333; }
 .r-ball-btn[data-rball="1"] { background: #f5c518; color: #333; }
@@ -955,15 +971,15 @@ html, body {
 
 <!-- Positions tab -->
 <div id="tab-positions" class="tab-content positions-tab">
+  <div class="ball-selector-row">
+    <button class="ball-btn active" data-ball="0">W</button>
+    <button class="ball-btn" data-ball="1">Y</button>
+    <button class="ball-btn" data-ball="2">R</button>
+  </div>
   <div class="table-wrap">
     <canvas id="pos-canvas"></canvas>
   </div>
   <div class="pos-controls">
-    <div class="ball-btns">
-      <button class="ball-btn active" data-ball="0">W</button>
-      <button class="ball-btn" data-ball="1">Y</button>
-      <button class="ball-btn" data-ball="2">R</button>
-    </div>
     <input type="text" id="pos-name" class="pos-name-input" placeholder="Setup name…">
     <button id="pos-save" class="pos-save-btn">Save</button>
   </div>
@@ -1022,13 +1038,10 @@ html, body {
     <div class="reason-sheet-title">Why did you miss?</div>
     <div class="reason-options" id="reason-options"></div>
     <div class="reason-pos-wrap">
-      <div class="reason-pos-header">
-        <span class="reason-pos-label">Position</span>
-        <div class="reason-ball-btns">
-          <button class="r-ball-btn active" data-rball="0">W</button>
-          <button class="r-ball-btn" data-rball="1">Y</button>
-          <button class="r-ball-btn" data-rball="2">R</button>
-        </div>
+      <div class="reason-ball-selector-row">
+        <button class="r-ball-btn active" data-rball="0">W</button>
+        <button class="r-ball-btn" data-rball="1">Y</button>
+        <button class="r-ball-btn" data-rball="2">R</button>
       </div>
       <div class="reason-table-wrap">
         <canvas id="reason-canvas"></canvas>
